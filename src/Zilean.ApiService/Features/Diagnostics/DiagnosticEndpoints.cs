@@ -1,3 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using Zilean.Database;
+using Zilean.Shared.Features.Ingestion;
+
 namespace Zilean.ApiService.Features.Diagnostics;
 
 public static class DiagnosticEndpoints
@@ -24,11 +28,40 @@ public static class DiagnosticEndpoints
         message = "Freshness tracking coming soon"
     });
 
-    private static IResult GetQueue() => Results.Ok(new
+    private static async Task<IResult> GetQueue(ZileanDbContext dbContext, CancellationToken ct)
     {
-        status = "not_implemented",
-        message = "Queue tracking coming soon"
-    });
+        var stats = await dbContext.IngestionQueues
+            .GroupBy(q => q.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var pending = stats.FirstOrDefault(s => s.Status == "pending")?.Count ?? 0;
+        var processing = stats.FirstOrDefault(s => s.Status == "processing")?.Count ?? 0;
+        var completed = stats.FirstOrDefault(s => s.Status == "completed")?.Count ?? 0;
+        var failed = stats.FirstOrDefault(s => s.Status == "failed")?.Count ?? 0;
+
+        var oldestPending = await dbContext.IngestionQueues
+            .Where(q => q.Status == "pending")
+            .OrderBy(q => q.CreatedAt)
+            .Take(10)
+            .Select(q => new
+            {
+                q.Id,
+                q.InfoHash,
+                q.CreatedAt,
+                q.RetryCount
+            })
+            .ToListAsync(ct);
+
+        return TypedResults.Ok(new
+        {
+            pending,
+            processing,
+            completed,
+            failed,
+            oldestPending
+        });
+    }
 
     private static IResult GetMisses() => Results.Ok(new
     {
