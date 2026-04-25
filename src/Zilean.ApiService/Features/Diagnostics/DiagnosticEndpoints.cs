@@ -1,4 +1,5 @@
 using Zilean.ApiService.Features.Ingestion;
+using Zilean.Database;
 
 namespace Zilean.ApiService.Features.Diagnostics;
 
@@ -49,11 +50,31 @@ public static class DiagnosticEndpoints
         });
     }
 
-    private static IResult GetMisses() => Results.Ok(new
+    private static async Task<IResult> GetMisses(ZileanDbContext dbContext, CancellationToken ct)
     {
-        status = "not_implemented",
-        message = "Miss tracking coming soon"
-    });
+        var totalMisses = await dbContext.Torrents
+            .Where(t => t.RefreshPending || t.MissCount > 0)
+            .SumAsync(t => t.MissCount, ct);
+
+        var topMissed = await dbContext.Torrents
+            .Where(t => t.RefreshPending || t.MissCount > 0)
+            .OrderByDescending(t => t.MissCount)
+            .Take(20)
+            .Select(t => new
+            {
+                title = t.RawTitle ?? t.ParsedTitle ?? "Unknown",
+                missCount = t.MissCount,
+                imdbId = t.ImdbId,
+                category = t.Category
+            })
+            .ToListAsync(ct);
+
+        return TypedResults.Ok(new
+        {
+            totalMisses,
+            topMissed
+        });
+    }
 
     private static IResult GetStats() => Results.Ok(new
     {
