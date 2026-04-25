@@ -154,4 +154,13 @@ public class TorrentInfo
 
     [JsonPropertyName("ingested_at")]
     public DateTime IngestedAt { get; set; } = DateTime.UtcNow;
+
+    [JsonPropertyName("last_refreshed_at")]
+    public DateTime? LastRefreshedAt { get; set; }
+
+    [JsonPropertyName("miss_count")]
+    public int MissCount { get; set; } = 0;
+
+    [JsonPropertyName("refresh_pending")]
+    public bool RefreshPending { get; set; } = false;
 }
