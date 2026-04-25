@@ -87,6 +87,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddIngestionCheckpointService(this IServiceCollection services)
+    {
+        services.AddScoped<IIngestionCheckpointService, IngestionCheckpointService>();
+        return services;
+    }
+
     public static IServiceCollection AddFileAuditService(this IServiceCollection services)
     {
         services.AddScoped<IFileAuditLogService, FileAuditLogService>();
