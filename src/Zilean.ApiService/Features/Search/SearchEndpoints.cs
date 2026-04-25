@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Text.Json;
+using Zilean.ApiService.Features.Audit;
+
 namespace Zilean.ApiService.Features.Search;
 
 public static class SearchEndpoints
@@ -69,18 +73,23 @@ public static class SearchEndpoints
         logger.LogWarning("Failed to acquire lock for on-demand scrape.");
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, [FromBody] DmmQueryRequest queryRequest)
+    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, [FromBody] DmmQueryRequest queryRequest)
     {
+        var sw = Stopwatch.StartNew();
+        var timestamp = DateTime.UtcNow;
+        TorrentInfo[] results;
+
         try
         {
             if (string.IsNullOrEmpty(queryRequest.QueryText))
             {
-                return TypedResults.Ok(Array.Empty<TorrentInfo>());
+                results = Array.Empty<TorrentInfo>();
+                return TypedResults.Ok(results);
             }
 
             logger.LogInformation("Performing unfiltered search for {QueryText}", queryRequest.QueryText);
 
-            var results = await torrentInfoService.SearchForTorrentInfoByOnlyTitle(queryRequest.QueryText);
+            results = await torrentInfoService.SearchForTorrentInfoByOnlyTitle(queryRequest.QueryText);
 
             logger.LogInformation("Unfiltered search for {QueryText} returned {Count} results", queryRequest.QueryText, results.Length);
 
@@ -90,18 +99,41 @@ public static class SearchEndpoints
         }
         catch
         {
-            return TypedResults.Ok(Array.Empty<TorrentInfo>());
+            results = Array.Empty<TorrentInfo>();
+            return TypedResults.Ok(results);
+        }
+        finally
+        {
+            sw.Stop();
+            try
+            {
+                await auditService.LogQueryAsync(
+                    query: queryRequest.QueryText ?? string.Empty,
+                    endpoint: "/dmm/search",
+                    clientIp: context.Connection.RemoteIpAddress?.ToString(),
+                    resultCount: results.Length,
+                    durationMs: (int)sw.ElapsedMilliseconds,
+                    timestamp: timestamp);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to log query audit for unfiltered search");
+            }
         }
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, [AsParameters] SearchFilteredRequest request)
+    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, IQueryAuditService auditService, [AsParameters] SearchFilteredRequest request)
     {
+
+        var sw = Stopwatch.StartNew();
+        var timestamp = DateTime.UtcNow;
+        TorrentInfo[] results;
 
         try
         {
             logger.LogInformation("Performing filtered search for {@Request}", request);
 
-            var results = await torrentInfoService.SearchForTorrentInfoFiltered(new TorrentInfoFilter
+            results = await torrentInfoService.SearchForTorrentInfoFiltered(new TorrentInfoFilter
             {
                 Query = request.Query,
                 Season = request.Season,
@@ -121,7 +153,28 @@ public static class SearchEndpoints
         }
         catch
         {
-            return TypedResults.Ok(Array.Empty<TorrentInfo>());
+            results = Array.Empty<TorrentInfo>();
+            return TypedResults.Ok(results);
+        }
+        finally
+        {
+            sw.Stop();
+            try
+            {
+                var filtersJson = JsonSerializer.Serialize(request);
+                await auditService.LogQueryAsync(
+                    query: request.Query ?? string.Empty,
+                    endpoint: "/dmm/filtered",
+                    clientIp: context.Connection.RemoteIpAddress?.ToString(),
+                    resultCount: results.Length,
+                    durationMs: (int)sw.ElapsedMilliseconds,
+                    timestamp: timestamp,
+                    filtersJson: filtersJson);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to log query audit for filtered search");
+            }
         }
     }
 
