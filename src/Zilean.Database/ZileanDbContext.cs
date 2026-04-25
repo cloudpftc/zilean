@@ -28,6 +28,10 @@ public class ZileanDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ParsedPagesConfiguration());
         modelBuilder.ApplyConfiguration(new ImportMetadataConfiguration());
         modelBuilder.ApplyConfiguration(new BlacklistedItemConfiguration());
+        modelBuilder.ApplyConfiguration(new IngestionCheckpointConfiguration());
+        modelBuilder.ApplyConfiguration(new IngestionQueueConfiguration());
+        modelBuilder.ApplyConfiguration(new QueryAuditConfiguration());
+        modelBuilder.ApplyConfiguration(new FileAuditLogConfiguration());
     }
 
     public DbSet<TorrentInfo> Torrents => Set<TorrentInfo>();
@@ -35,4 +39,8 @@ public class ZileanDbContext : DbContext
     public DbSet<ParsedPages> ParsedPages => Set<ParsedPages>();
     public DbSet<ImportMetadata> ImportMetadata => Set<ImportMetadata>();
     public DbSet<BlacklistedItem> BlacklistedItems => Set<BlacklistedItem>();
+    public DbSet<IngestionCheckpoint> IngestionCheckpoints => Set<IngestionCheckpoint>();
+    public DbSet<IngestionQueue> IngestionQueues => Set<IngestionQueue>();
+    public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
+    public DbSet<FileAuditLog> FileAuditLogs => Set<FileAuditLog>();
 }
