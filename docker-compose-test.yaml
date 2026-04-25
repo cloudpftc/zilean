@@ -1,0 +1,146 @@
+# Zilean (improved) + Comet-Zilean stack
+# Builds Zilean from local source instead of using ipromknight/zilean:latest
+# Stripped down for testing: no VPN, no flaresolverr, no cloudflared
+
+services:
+  # ==========================================
+  # PostgreSQL
+  # ==========================================
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+    image: postgres:17-alpine
+    container_name: zilean-db
+    shm_size: 512mb
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=zilean
+    volumes:
+      - /mnt/nvme/comet/postgres/data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - autoheal=true
+    ports:
+      - "5432:5432"
+
+  # ==========================================
+  # Zilean (built from local improved source)
+  # ==========================================
+  zilean:
+    build:
+      context: /home/pedro/projects/zilean
+      dockerfile: Dockerfile.runtime
+    container_name: zilean
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+    environment:
+      # Required - used by DatabaseConfiguration to build connection string
+      - POSTGRES_PASSWORD=postgres
+
+      # Zilean config overrides (Zilean__ prefix maps to the "Zilean" JSON section)
+      - Zilean__Dmm__EnableScraping=true
+      - Zilean__Dmm__EnableEndpoint=true
+      - Zilean__Dmm__ScrapeSchedule=0 * * * *
+      - Zilean__Dmm__MaxFilteredResults=200
+      - Zilean__Dmm__MinimumScoreMatch=0.85
+
+      # Anime ranking (defaults: 1.5, 2.0, "any")
+      - Zilean__Dmm__AnimeCategoryBoost=1.5
+      - Zilean__Dmm__AnimeCompleteSeriesBoost=2.0
+      - Zilean__Dmm__AnimeAudioPreference=any
+
+      # Refresh-on-miss (defaults: true, 5, 24h, 10)
+      - Zilean__Refresh__EnableRefreshOnMiss=true
+      - Zilean__Refresh__MaxMissCountBeforeRefresh=5
+      - Zilean__Refresh__MaxConcurrentRefreshes=10
+
+      # Audit/telemetry (defaults: true, true, 30, true)
+      - Zilean__Audit__EnableQueryAuditing=true
+      - Zilean__Audit__EnableFileAuditing=true
+      - Zilean__Audit__RetentionDays=30
+
+      # Persistence (defaults: 3, 30, "on", 100, 5, 30, 1000, 0, 50000, 1000)
+      - Zilean__Persistence__MaxRetryCount=3
+      - Zilean__Persistence__CheckpointRetentionDays=30
+      - Zilean__Persistence__SynchronousCommitMode=on
+      - Zilean__Persistence__MaxPoolSize=100
+      - Zilean__Persistence__MinPoolSize=5
+      - Zilean__Persistence__BulkInsertBatchSize=1000
+      - Zilean__Persistence__MaxMemoryMB=0
+      - Zilean__Persistence__MaxBatchSize=50000
+      - Zilean__Persistence__MinBatchSize=1000
+
+      # Diagnostics
+      - Zilean__Diagnostics__EnableEndpoint=true
+
+      # Disable dashboard to save memory
+      - Zilean__EnableDashboard=false
+    volumes:
+      - /mnt/nvme/comet/zilean/data:/app/data
+    labels:
+      - autoheal=true
+    healthcheck:
+      test: ["CMD-SHELL", "curl --connect-timeout 10 --silent --show-error --fail http://localhost:8181/healthchecks/ping"]
+      timeout: 60s
+      interval: 30s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+
+  # ==========================================
+  # Comet-Zilean
+  # ==========================================
+  comet-zilean:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+    container_name: comet-zilean
+    image: g0ldyy/comet:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /mnt/nvme/comet/comet_zilean:/data
+    ports:
+      - "8000:8000"
+    environment:
+      - FASTAPI_PORT=8000
+      - DATABASE_TYPE=postgresql
+      - DATABASE_URL=postgres:postgres@zilean-db:5432/comet_zilean
+      - BACKGROUND_SCRAPER_ENABLED=false
+      - SCRAPE_ZILEAN=live
+      - INDEXER_MANAGER_TYPE=zilean
+      - ADDON_NAME=Comet-Zilean
+      - ADDON_ID=stremio.comet.zilean
+      - ZILEAN_URL=http://zilean:8181
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/manifest.json').getcode())\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - autoheal=true
+    depends_on:
+      - zilean
+
+networks: {}

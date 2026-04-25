@@ -1,9 +1,12 @@
 # Ignore bin and obj directories
 **/bin
 **/obj
-**/out
 **/Debug
 **/Release
+
+# Ignore nested out/ directories (but allow root-level out/ for Dockerfile.runtime)
+**/out
+!out
 
 # Ignore .NET build artifacts
 *.dll
