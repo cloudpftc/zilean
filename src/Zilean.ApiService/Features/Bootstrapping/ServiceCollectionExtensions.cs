@@ -86,6 +86,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddFileAuditService(this IServiceCollection services)
+    {
+        services.AddScoped<IFileAuditLogService, FileAuditLogService>();
+        return services;
+    }
+
     public static IServiceCollection AddDashboardSupport(this IServiceCollection services, ZileanConfiguration configuration)
     {
         if (!configuration.EnableDashboard)
