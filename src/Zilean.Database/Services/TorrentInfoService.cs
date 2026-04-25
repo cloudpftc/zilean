@@ -1,6 +1,8 @@
+using Zilean.Shared.Features.Ingestion;
+
 namespace Zilean.Database.Services;
 
-public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfiguration configuration, IServiceProvider serviceProvider)
+public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfiguration configuration, IServiceProvider serviceProvider, IIngestionCheckpointService? checkpointService = null)
     : BaseDapperService(logger, configuration), ITorrentInfoService
 {
     public async Task VaccumTorrentsIndexes(CancellationToken cancellationToken)
@@ -11,7 +13,7 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
         await dbContext.Database.ExecuteSqlRawAsync("VACUUM (VERBOSE, ANALYZE) \"Torrents\"", cancellationToken: cancellationToken);
     }
 
-    public async Task StoreTorrentInfo(List<TorrentInfo> torrents, int batchSize = 5000)
+    public async Task StoreTorrentInfo(List<TorrentInfo> torrents, int batchSize = 10000, string? source = null)
     {
         if (torrents.Count == 0)
         {
@@ -47,6 +49,7 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
 
         logger.LogInformation("Storing {Count} torrents in {BatchSize} batches", torrents.Count, chunks.Count);
         var currentBatch = 0;
+        var totalProcessed = 0;
         foreach (var batch in chunks)
         {
             currentBatch++;
@@ -59,6 +62,34 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
 
             logger.LogInformation("Storing batch {CurrentBatch} of {TotalBatches}", currentBatch, chunks.Count);
             await dbContext.BulkInsertOrUpdateAsync(batch, bulkConfig);
+
+            totalProcessed += batch.Length;
+
+            if (checkpointService is not null && !string.IsNullOrEmpty(source))
+            {
+                try
+                {
+                    var lastInfoHash = batch[^1].InfoHash;
+                    await checkpointService.SaveCheckpointAsync(source, lastInfoHash, "in_progress", totalProcessed);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to save ingestion checkpoint for source {Source}", source);
+                }
+            }
+        }
+
+        if (checkpointService is not null && !string.IsNullOrEmpty(source))
+        {
+            try
+            {
+                var lastInfoHash = chunks[^1][^1].InfoHash;
+                await checkpointService.SaveCheckpointAsync(source, lastInfoHash, "completed", totalProcessed);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to save completion checkpoint for source {Source}", source);
+            }
         }
 
         imdbMatchingService.DisposeImdbData();
