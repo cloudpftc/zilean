@@ -1,4 +1,5 @@
 using Zilean.ApiService.Features.Dashboard.Components.Pages.Dashboard;
+using Zilean.ApiService.Features.HealthChecks;
 
 namespace Zilean.ApiService.Features.Bootstrapping;
 
@@ -69,6 +70,12 @@ public static class ServiceCollectionExtensions
             });
         });
 
+        return services;
+    }
+
+    public static IServiceCollection AddHealthCheckService(this IServiceCollection services)
+    {
+        services.AddScoped<IHealthCheckService, HealthCheckService>();
         return services;
     }
 

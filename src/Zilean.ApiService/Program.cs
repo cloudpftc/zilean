@@ -14,6 +14,7 @@ builder.Services
     .ConditionallyRegisterDmmJob(zileanConfiguration)
     .AddZileanDataServices(zileanConfiguration)
     .AddApiKeyAuthentication()
+    .AddHealthCheckService()
     .AddStartupHostedServices()
     .AddDashboardSupport(zileanConfiguration);
 

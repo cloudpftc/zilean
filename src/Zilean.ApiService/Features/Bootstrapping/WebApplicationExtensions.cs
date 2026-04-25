@@ -1,3 +1,5 @@
+using Zilean.ApiService.Features.Diagnostics;
+
 namespace Zilean.ApiService.Features.Bootstrapping;
 
 public static class WebApplicationExtensions
@@ -35,7 +37,8 @@ public static class WebApplicationExtensions
             .MapTorznabEndpoints(configuration)
             .MapTorrentsEndpoints(configuration)
             .MapBlacklistEndpoints()
-            .MapHealthCheckEndpoints();
+            .MapHealthCheckEndpoints()
+            .MapDiagnosticEndpoints();
 
         if (configuration.EnableDashboard)
         {
