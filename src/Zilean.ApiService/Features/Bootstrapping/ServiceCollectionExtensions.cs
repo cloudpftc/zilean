@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddTransient<DmmSyncJob>();
         services.AddTransient<GenericSyncJob>();
+        services.AddTransient<BackgroundRefreshJob>();
         services.AddSingleton<SyncOnDemandState>();
 
         return services;
@@ -49,6 +50,10 @@ public static class ServiceCollectionExtensions
                         .Cron(configuration.Ingestion.ScrapeSchedule)
                         .PreventOverlapping("SyncJobs");
                 }
+
+                scheduler.Schedule<BackgroundRefreshJob>()
+                    .Cron("0 * * * *")
+                    .PreventOverlapping("RefreshJobs");
             })
             .LogScheduledTaskProgress();
 
