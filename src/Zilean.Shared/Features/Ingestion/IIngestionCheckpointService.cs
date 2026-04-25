@@ -1,6 +1,6 @@
 using Zilean.Shared.Features.Ingestion;
 
-namespace Zilean.ApiService.Features.Ingestion;
+namespace Zilean.Shared.Features.Ingestion;
 
 /// <summary>
 /// Manages ingestion checkpoints for tracking progress across ingestion sources.
