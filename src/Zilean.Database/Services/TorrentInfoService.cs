@@ -21,6 +21,19 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
             return;
         }
 
+        // Dynamic batch size based on torrent count
+        var baseBatchSize = Configuration.Persistence.BulkInsertBatchSize;
+        var effectiveBatchSize = batchSize;
+        if (torrents.Count > 50000)
+        {
+            effectiveBatchSize = Math.Min(baseBatchSize * 2, 5000);
+        }
+        if (torrents.Count > 100000)
+        {
+            effectiveBatchSize = Math.Min(baseBatchSize * 3, 10000);
+        }
+        logger.LogInformation("Using batch size {BatchSize} for {Count} torrents", effectiveBatchSize, torrents.Count);
+
         foreach (var torrentInfo in torrents)
         {
             torrentInfo.CleanedParsedTitle = Parsing.CleanQuery(torrentInfo.ParsedTitle);
@@ -36,7 +49,7 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
         var bulkConfig = new BulkConfig
         {
             SetOutputIdentity = false,
-            BatchSize = batchSize,
+            BatchSize = effectiveBatchSize,
             PropertiesToIncludeOnUpdate = [string.Empty],
             UpdateByProperties = ["InfoHash"],
             BulkCopyTimeout = 0,
@@ -45,11 +58,12 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
 
         dbContext.Database.SetCommandTimeout(0);
 
-        var chunks = torrents.Chunk(batchSize).ToList();
+        var chunks = torrents.Chunk(effectiveBatchSize).ToList();
 
         logger.LogInformation("Storing {Count} torrents in {BatchSize} batches", torrents.Count, chunks.Count);
         var currentBatch = 0;
         var totalProcessed = 0;
+        var ingestionStart = DateTime.UtcNow;
         foreach (var batch in chunks)
         {
             currentBatch++;
@@ -64,6 +78,13 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
             await dbContext.BulkInsertOrUpdateAsync(batch, bulkConfig);
 
             totalProcessed += batch.Length;
+
+            var elapsed = DateTime.UtcNow - ingestionStart;
+            var itemsPerSecond = elapsed.TotalSeconds > 0 ? totalProcessed / elapsed.TotalSeconds : 0;
+            var remaining = torrents.Count - totalProcessed;
+            var etaSeconds = itemsPerSecond > 0 ? remaining / itemsPerSecond : 0;
+            var eta = TimeSpan.FromSeconds(etaSeconds);
+            logger.LogInformation("Ingestion progress: {TotalProcessed}/{TotalCount} ({Rate:F1} items/sec) - ETA: {Eta:hh\\:mm\\:ss}", totalProcessed, torrents.Count, itemsPerSecond, eta);
 
             if (checkpointService is not null && !string.IsNullOrEmpty(source))
             {
@@ -98,6 +119,8 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
     public async Task<TorrentInfo[]> SearchForTorrentInfoByOnlyTitle(string query)
     {
         var cleanQuery = Parsing.CleanQuery(query);
+        var animeCategoryBoost = Configuration.Dmm.AnimeCategoryBoost;
+        var animeCompleteBoost = Configuration.Dmm.AnimeCompleteSeriesBoost;
 
         return await ExecuteCommandAsync(async connection =>
         {
@@ -106,8 +129,11 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
                 SELECT
                     *,
                     CASE
+                        WHEN ("Category" ILIKE '%anime%' OR "Category" ILIKE '%TVAnime%')
+                             AND "Complete" = true
+                        THEN similarity("CleanedParsedTitle", @query) * @animeCompleteBoost
                         WHEN "Category" ILIKE '%anime%' OR "Category" ILIKE '%TVAnime%'
-                        THEN similarity("CleanedParsedTitle", @query) * 1.5
+                        THEN similarity("CleanedParsedTitle", @query) * @animeCategoryBoost
                         ELSE similarity("CleanedParsedTitle", @query)
                     END AS "Score"
                 FROM "Torrents"
@@ -120,6 +146,8 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
             var parameters = new DynamicParameters();
 
             parameters.Add("@query", cleanQuery);
+            parameters.Add("@animeCategoryBoost", animeCategoryBoost);
+            parameters.Add("@animeCompleteBoost", animeCompleteBoost);
 
             var result = await connection.QueryAsync<TorrentInfo>(sql, parameters);
 
@@ -127,10 +155,11 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
         }, "Error finding unfiltered dmm entries.");
     }
 
-    public async Task<TorrentInfo[]> SearchForTorrentInfoFiltered(TorrentInfoFilter filter, int? limit = null)
+public async Task<TorrentInfo[]> SearchForTorrentInfoFiltered(TorrentInfoFilter filter, int? limit = null)
     {
         var cleanQuery = Parsing.CleanQuery(filter.Query);
         var imdbId = EnsureCorrectFormatImdbId(filter);
+        var audioPreference = Configuration.Dmm.AnimeAudioPreference;
 
         return await ExecuteCommandAsync(async connection =>
         {
@@ -149,7 +178,7 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
                        @Category,
                        @SimilarityThreshold
                    );
-                """;
+                 """;
 
             var parameters = new DynamicParameters();
 
@@ -166,9 +195,36 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
 
             var results = await connection.QueryAsync<TorrentInfoResult>(sql, parameters);
 
-            // assign imdb to torrent info
-            return results.Select(MapImdbDataToTorrentInfo).ToArray();
+            var torrentResults = results.Select(MapImdbDataToTorrentInfo).ToArray();
+
+            if (audioPreference != "any")
+            {
+                var audioBoost = 1.2;
+                torrentResults = torrentResults
+                    .Select(t => new { Torrent = t, Boost = CalculateAudioBoost(t, audioPreference, audioBoost) })
+                    .OrderByDescending(x => x.Boost)
+                    .Select(x => x.Torrent)
+                    .ToArray();
+            }
+
+            return torrentResults;
         }, "Error finding unfiltered dmm entries.");
+    }
+
+    private static double CalculateAudioBoost(TorrentInfo torrent, string preference, double boostFactor)
+    {
+        var isAnime = torrent.Category?.Contains("anime", StringComparison.OrdinalIgnoreCase) == true ||
+                      torrent.Category?.Contains("TVAnime", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (!isAnime)
+            return 1.0;
+
+        return preference switch
+        {
+            "subbed" when torrent.Subbed == true => boostFactor,
+            "dubbed" when torrent.Dubbed == true => boostFactor,
+            _ => 1.0
+        };
     }
 
     private static string? EnsureCorrectFormatImdbId(TorrentInfoFilter filter)
