@@ -1,4 +1,5 @@
 using Zilean.ApiService.Features.Ingestion;
+using Zilean.Database;
 
 namespace Zilean.ApiService.Features.Diagnostics;
 
@@ -20,11 +21,40 @@ public static class DiagnosticEndpoints
         return app;
     }
 
-    private static IResult GetFreshness() => Results.Ok(new
+    private static async Task<IResult> GetFreshness(ZileanDbContext dbContext, CancellationToken ct)
     {
-        status = "not_implemented",
-        message = "Freshness tracking coming soon"
-    });
+        var sourceStats = await dbContext.Torrents
+            .GroupBy(t => t.Category)
+            .Select(g => new
+            {
+                name = g.Key,
+                lastUpdated = g.Max(t => t.LastRefreshedAt != null ? t.LastRefreshedAt : t.IngestedAt),
+                torrentCount = g.Count()
+            })
+            .OrderByDescending(x => x.lastUpdated)
+            .ToListAsync(ct);
+
+        var sources = sourceStats.Select(s => new
+        {
+            name = s.name,
+            lastUpdated = s.lastUpdated,
+            ageHours = s.lastUpdated != null ? Math.Round((DateTime.UtcNow - s.lastUpdated.Value).TotalHours, 2) : (double?)null,
+            torrentCount = s.torrentCount
+        }).ToList();
+
+        var overallLastUpdated = sourceStats.Max(s => s.lastUpdated);
+        var overallAgeHours = overallLastUpdated != null
+            ? Math.Round((DateTime.UtcNow - overallLastUpdated.Value).TotalHours, 2)
+            : (double?)null;
+
+        return TypedResults.Ok(new
+        {
+            sources,
+            overallAgeHours,
+            overallLastUpdated,
+            totalTorrents = sources.Sum(s => s.torrentCount)
+        });
+    }
 
     private static async Task<IResult> GetQueue(IIngestionQueueService queueService, CancellationToken ct)
     {
