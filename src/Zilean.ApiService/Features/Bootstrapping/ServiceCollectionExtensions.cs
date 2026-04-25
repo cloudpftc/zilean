@@ -113,6 +113,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddMissTrackingService(this IServiceCollection services)
+    {
+        services.AddScoped<IMissTrackingService, MissTrackingService>();
+        return services;
+    }
+
     public static IServiceCollection AddDashboardSupport(this IServiceCollection services, ZileanConfiguration configuration)
     {
         if (!configuration.EnableDashboard)
