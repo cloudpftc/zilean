@@ -14,12 +14,6 @@ public static class ServiceCollectionExtensions
 
     private static void RegisterImdbMatchingService(this IServiceCollection services, ZileanConfiguration configuration)
     {
-        if (configuration.Imdb.UseLucene)
-        {
-            services.AddTransient<IImdbMatchingService, ImdbLuceneMatchingService>();
-            return;
-        }
-
         services.AddTransient<IImdbMatchingService, ImdbFuzzyStringMatchingService>();
     }
 }

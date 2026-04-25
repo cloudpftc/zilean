@@ -14,9 +14,6 @@
   <ItemGroup>
     <PackageReference Include="Dapper" />
     <PackageReference Include="EFCore.BulkExtensions.PostgreSql" />
-    <PackageReference Include="Lucene.Net" />
-    <PackageReference Include="Lucene.Net.Analysis.Common" />
-    <PackageReference Include="Lucene.Net.QueryParser" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
