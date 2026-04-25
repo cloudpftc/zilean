@@ -1,3 +1,4 @@
+using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Dashboard.Components.Pages.Dashboard;
 using Zilean.ApiService.Features.HealthChecks;
 
@@ -76,6 +77,12 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHealthCheckService(this IServiceCollection services)
     {
         services.AddScoped<IHealthCheckService, HealthCheckService>();
+        return services;
+    }
+
+    public static IServiceCollection AddQueryAuditService(this IServiceCollection services)
+    {
+        services.AddScoped<IQueryAuditService, QueryAuditService>();
         return services;
     }
 

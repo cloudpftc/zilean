@@ -15,6 +15,7 @@ builder.Services
     .AddZileanDataServices(zileanConfiguration)
     .AddApiKeyAuthentication()
     .AddHealthCheckService()
+    .AddQueryAuditService()
     .AddStartupHostedServices()
     .AddDashboardSupport(zileanConfiguration);
 
