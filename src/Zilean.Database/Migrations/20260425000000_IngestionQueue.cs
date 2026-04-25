@@ -1,3 +1,4 @@
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 

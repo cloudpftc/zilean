@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore.Migrations;
-using Zilean.Database.Functions;
+using ImdbTrigramFunctions = Zilean.Database.Functions.ImdbTrigramMatching;
 
 #nullable disable
 
@@ -12,16 +12,16 @@ public partial class ImdbTrigramMatching : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
-        migrationBuilder.Sql(ImdbTrigramMatching.CreateMatchTitleFunction);
-        migrationBuilder.Sql(ImdbTrigramMatching.CreateBatchFindFunction);
-        migrationBuilder.Sql(ImdbTrigramMatching.CreateBatchUpdateFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.CreateMatchTitleFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.CreateBatchFindFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.CreateBatchUpdateFunction);
     }
 
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql(ImdbTrigramMatching.RemoveBatchUpdateFunction);
-        migrationBuilder.Sql(ImdbTrigramMatching.RemoveBatchFindFunction);
-        migrationBuilder.Sql(ImdbTrigramMatching.RemoveMatchTitleFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.RemoveBatchUpdateFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.RemoveBatchFindFunction);
+        migrationBuilder.Sql(ImdbTrigramFunctions.RemoveMatchTitleFunction);
     }
 }

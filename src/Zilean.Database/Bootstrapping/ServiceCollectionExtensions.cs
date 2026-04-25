@@ -1,4 +1,5 @@
 using Npgsql;
+using Zilean.Database.Services.Postgres;
 using Zilean.Shared.Features.Configuration;
 
 namespace Zilean.Database.Bootstrapping;
@@ -35,6 +36,6 @@ public static class ServiceCollectionExtensions
 
     private static void RegisterImdbMatchingService(this IServiceCollection services, ZileanConfiguration configuration)
     {
-        services.AddTransient<IImdbMatchingService, ImdbFuzzyStringMatchingService>();
+        services.AddTransient<IImdbMatchingService, ImdbPostgresMatchingService>();
     }
 }

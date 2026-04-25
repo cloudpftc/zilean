@@ -1,3 +1,4 @@
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Zilean.Database.ModelConfiguration;
 
 public class FileAuditLogConfiguration : IEntityTypeConfiguration<FileAuditLog>
