@@ -40,6 +40,7 @@ public static class WebApplicationExtensions
             .MapBlacklistEndpoints()
             .MapHealthCheckEndpoints()
             .MapDiagnosticEndpoints()
+            .MapQueryAuditEndpoints()
             .MapFileAuditEndpoints();
 
         if (configuration.EnableDashboard)
