@@ -1,26 +1,65 @@
+using Zilean.ApiService.Features.Audit;
+
 namespace Zilean.ApiService.Features.Sync;
 
-public class GenericSyncJob(IShellExecutionService shellExecutionService, ILogger<GenericSyncJob> logger, ZileanDbContext dbContext) : IInvocable, ICancellableInvocable
+public class GenericSyncJob(IShellExecutionService shellExecutionService, ILogger<GenericSyncJob> logger, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService) : IInvocable, ICancellableInvocable
 {
     public CancellationToken CancellationToken { get; set; }
     private const string GenericSyncArg = "generic-sync";
 
     public async Task Invoke()
     {
-        logger.LogInformation("Generic SyncJob started");
-
-        var argumentBuilder = ArgumentsBuilder.Create();
-        argumentBuilder.AppendArgument(GenericSyncArg, string.Empty, false, false);
-
-        await shellExecutionService.ExecuteCommand(new ShellCommandOptions
+        var sw = Stopwatch.StartNew();
+        try
         {
-            Command = Path.Combine(AppContext.BaseDirectory, "scraper"),
-            ArgumentsBuilder = argumentBuilder,
-            ShowOutput = true,
-            CancellationToken = CancellationToken
-        });
+            logger.LogInformation("Generic SyncJob started");
 
-        logger.LogInformation("Generic SyncJob completed");
+            try
+            {
+                await fileAuditLogService.LogFileOperationAsync("scrape_start", null, "started", "GenericSyncJob", (int)sw.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to log scrape_start audit");
+            }
+
+            var argumentBuilder = ArgumentsBuilder.Create();
+            argumentBuilder.AppendArgument(GenericSyncArg, string.Empty, false, false);
+
+            await shellExecutionService.ExecuteCommand(new ShellCommandOptions
+            {
+                Command = Path.Combine(AppContext.BaseDirectory, "scraper"),
+                ArgumentsBuilder = argumentBuilder,
+                ShowOutput = true,
+                CancellationToken = CancellationToken
+            });
+
+            sw.Stop();
+            try
+            {
+                await fileAuditLogService.LogFileOperationAsync("scrape_complete", null, "completed", "GenericSyncJob", (int)sw.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to log scrape_complete audit");
+            }
+
+            logger.LogInformation("Generic SyncJob completed");
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Generic SyncJob failed");
+            try
+            {
+                await fileAuditLogService.LogFileOperationAsync("file_error", null, "error", $"GenericSyncJob: {ex.Message}", (int)sw.ElapsedMilliseconds);
+            }
+            catch (Exception auditEx)
+            {
+                logger.LogWarning(auditEx, "Failed to log file_error audit");
+            }
+            throw;
+        }
     }
 
     // ReSharper disable once MethodSupportsCancellation
