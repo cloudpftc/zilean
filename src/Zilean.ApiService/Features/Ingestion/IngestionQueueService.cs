@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Zilean.Shared.Features.Configuration;
 using Zilean.Shared.Features.Ingestion;
 
 namespace Zilean.ApiService.Features.Ingestion;
@@ -8,11 +9,13 @@ public class IngestionQueueService : IIngestionQueueService
 {
     private readonly ZileanDbContext _dbContext;
     private readonly ILogger<IngestionQueueService> _logger;
+    private readonly ZileanConfiguration _configuration;
 
-    public IngestionQueueService(ZileanDbContext dbContext, ILogger<IngestionQueueService> logger)
+    public IngestionQueueService(ZileanDbContext dbContext, ILogger<IngestionQueueService> logger, ZileanConfiguration configuration)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<IngestionQueue> EnqueueAsync(string infoHash)
@@ -33,10 +36,27 @@ public class IngestionQueueService : IIngestionQueueService
 
     public async Task<IngestionQueue?> DequeueAsync()
     {
+        var maxRetryCount = _configuration.Persistence.MaxRetryCount;
+
+        // First, try to get a pending item
         var entry = await _dbContext.IngestionQueues
             .Where(q => q.Status == "pending")
             .OrderBy(q => q.CreatedAt)
             .FirstOrDefaultAsync();
+
+        // If no pending items, check for failed items eligible for retry
+        if (entry == null)
+        {
+            var now = DateTime.UtcNow;
+            var retryableItems = await _dbContext.IngestionQueues
+                .Where(q => q.Status == "failed" && q.RetryCount < maxRetryCount)
+                .ToListAsync();
+
+            entry = retryableItems
+                .Where(q => q.ProcessedAt.HasValue && q.ProcessedAt.Value < now.AddMinutes(-Math.Pow(2, q.RetryCount) * 5))
+                .OrderBy(q => q.ProcessedAt)
+                .FirstOrDefault();
+        }
 
         if (entry == null)
         {
@@ -59,9 +79,22 @@ public class IngestionQueueService : IIngestionQueueService
             return;
         }
 
-        entry.Status = string.IsNullOrEmpty(errorMessage) ? "completed" : "failed";
         entry.ProcessedAt = DateTime.UtcNow;
         entry.ErrorMessage = errorMessage;
+
+        if (string.IsNullOrEmpty(errorMessage))
+        {
+            entry.Status = "completed";
+        }
+        else if (entry.RetryCount < _configuration.Persistence.MaxRetryCount)
+        {
+            entry.RetryCount++;
+            entry.Status = "pending";
+        }
+        else
+        {
+            entry.Status = "failed";
+        }
 
         await _dbContext.SaveChangesAsync();
 
@@ -75,6 +108,22 @@ public class IngestionQueueService : IIngestionQueueService
             .OrderBy(q => q.CreatedAt)
             .Take(limit)
             .ToListAsync();
+    }
+
+    public async Task<IEnumerable<IngestionQueue>> GetRetryableFailedAsync(int limit = 50)
+    {
+        var maxRetryCount = _configuration.Persistence.MaxRetryCount;
+        var now = DateTime.UtcNow;
+
+        var retryableItems = await _dbContext.IngestionQueues
+            .Where(q => q.Status == "failed" && q.RetryCount < maxRetryCount)
+            .ToListAsync();
+
+        return retryableItems
+            .Where(q => q.ProcessedAt.HasValue && q.ProcessedAt.Value < now.AddMinutes(-Math.Pow(2, q.RetryCount) * 5))
+            .OrderBy(q => q.ProcessedAt)
+            .Take(limit)
+            .ToList();
     }
 
     public async Task<QueueStats> GetStatsAsync()

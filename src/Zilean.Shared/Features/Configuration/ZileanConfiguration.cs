@@ -19,6 +19,9 @@ public class ZileanConfiguration
     public IngestionConfiguration Ingestion { get; set; } = new();
     public ParsingConfiguration Parsing { get; set; } = new();
     public PersistenceSettings Persistence { get; set; } = new();
+    public RefreshSettings Refresh { get; set; } = new();
+    public AuditSettings Audit { get; set; } = new();
+    public DiagnosticsSettings Diagnostics { get; set; } = new();
 
     public static void EnsureExists()
     {

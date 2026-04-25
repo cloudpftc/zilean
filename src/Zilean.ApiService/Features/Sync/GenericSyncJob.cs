@@ -1,9 +1,10 @@
 using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Ingestion;
+using Zilean.ApiService.Features.Search;
 
 namespace Zilean.ApiService.Features.Sync;
 
-public class GenericSyncJob(IShellExecutionService shellExecutionService, ILogger<GenericSyncJob> logger, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService) : IInvocable, ICancellableInvocable
+public class GenericSyncJob(IShellExecutionService shellExecutionService, ILogger<GenericSyncJob> logger, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache) : IInvocable, ICancellableInvocable
 {
     public CancellationToken CancellationToken { get; set; }
     private const string GenericSyncArg = "generic-sync";
@@ -49,6 +50,16 @@ public class GenericSyncJob(IShellExecutionService shellExecutionService, ILogge
             }
 
             logger.LogInformation("Generic SyncJob completed");
+
+            try
+            {
+                await queryCache.InvalidateAllAsync();
+                logger.LogInformation("Invalidated search cache after ingestion sync");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to invalidate search cache after ingestion sync");
+            }
         }
         catch (Exception ex)
         {

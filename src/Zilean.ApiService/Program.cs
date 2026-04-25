@@ -16,6 +16,11 @@ builder.Services
     .AddApiKeyAuthentication()
     .AddHealthCheckService()
     .AddQueryAuditService()
+    .AddQueryCacheService()
+    .AddMissTrackingService()
+    .AddIngestionQueueService()
+    .AddIngestionCheckpointService()
+    .AddFileAuditService()
     .AddStartupHostedServices()
     .AddDashboardSupport(zileanConfiguration);
 

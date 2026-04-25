@@ -1,4 +1,5 @@
 using Zilean.ApiService.Features.Ingestion;
+using Zilean.ApiService.Features.Search;
 using Zilean.Database;
 
 namespace Zilean.ApiService.Features.Diagnostics;
@@ -17,6 +18,7 @@ public static class DiagnosticEndpoints
         group.MapGet("/queue", GetQueue);
         group.MapGet("/misses", GetMisses);
         group.MapGet("/stats", GetStats);
+        group.MapGet("/cache", GetCacheStats);
 
         return app;
     }
@@ -142,6 +144,11 @@ public static class DiagnosticEndpoints
             totalDatabaseSizeMb = Math.Round(totalDatabaseSizeBytes / (1024.0 * 1024.0), 2),
             lastIngestionTime
         });
+    }
+
+    private static Task<IResult> GetCacheStats(IQueryCacheService queryCache)
+    {
+        return Task.FromResult(TypedResults.Ok(queryCache.GetStats()));
     }
 
     private class TableStatRaw

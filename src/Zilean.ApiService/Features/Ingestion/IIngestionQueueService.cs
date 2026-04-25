@@ -34,6 +34,12 @@ public interface IIngestionQueueService
     Task<IEnumerable<IngestionQueue>> GetPendingAsync(int limit = 50);
 
     /// <summary>
+    /// Returns failed queue items that are eligible for retry.
+    /// </summary>
+    /// <param name="limit">Maximum number of items to return (default 50).</param>
+    Task<IEnumerable<IngestionQueue>> GetRetryableFailedAsync(int limit = 50);
+
+    /// <summary>
     /// Returns counts of queue items by status.
     /// </summary>
     Task<QueueStats> GetStatsAsync();

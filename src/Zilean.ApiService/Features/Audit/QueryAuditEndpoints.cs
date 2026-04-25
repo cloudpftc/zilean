@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Zilean.ApiService.Features.Audit;
 using Zilean.Shared.Features.Audit;
+using Zilean.Shared.Features.Configuration;
 
 namespace Zilean.ApiService.Features.Audit;
 
@@ -23,24 +24,42 @@ public static class QueryAuditEndpoints
 
     private static async Task<IResult> GetRecentQueries(
         [FromServices] IQueryAuditService service,
+        [FromServices] ZileanConfiguration configuration,
         [FromQuery] int limit = 100)
     {
+        if (!configuration.Audit.EnableQueryAuditing)
+        {
+            return TypedResults.NotFound();
+        }
+
         var data = await service.GetRecentQueriesAsync(limit);
         return TypedResults.Ok(data);
     }
 
     private static async Task<IResult> GetTopQueries(
         [FromServices] IQueryAuditService service,
+        [FromServices] ZileanConfiguration configuration,
         [FromQuery] int limit = 20)
     {
+        if (!configuration.Audit.EnableQueryAuditing)
+        {
+            return TypedResults.NotFound();
+        }
+
         var data = await service.GetTopQueriesAsync(limit);
         return TypedResults.Ok(data);
     }
 
     private static async Task<IResult> GetQueriesByDateRange(
         [FromServices] IQueryAuditService service,
+        [FromServices] ZileanConfiguration configuration,
         [AsParameters] DateRangeQuery request)
     {
+        if (!configuration.Audit.EnableQueryAuditing)
+        {
+            return TypedResults.NotFound();
+        }
+
         var data = await service.GetQueriesByDateRangeAsync(request.Start, request.End);
         return TypedResults.Ok(data);
     }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Zilean.Shared.Features.Audit;
+using Zilean.Shared.Features.Configuration;
 
 namespace Zilean.ApiService.Features.Audit;
 
@@ -8,11 +9,13 @@ public class QueryAuditService : IQueryAuditService
 {
     private readonly ZileanDbContext _dbContext;
     private readonly ILogger<QueryAuditService> _logger;
+    private readonly ZileanConfiguration _configuration;
 
-    public QueryAuditService(ZileanDbContext dbContext, ILogger<QueryAuditService> logger)
+    public QueryAuditService(ZileanDbContext dbContext, ILogger<QueryAuditService> logger, ZileanConfiguration configuration)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task LogQueryAsync(
@@ -25,6 +28,11 @@ public class QueryAuditService : IQueryAuditService
         string? filtersJson = null,
         double? similarityThreshold = null)
     {
+        if (!_configuration.Audit.EnableQueryAuditing)
+        {
+            return;
+        }
+
         var audit = new QueryAudit
         {
             Query = query,

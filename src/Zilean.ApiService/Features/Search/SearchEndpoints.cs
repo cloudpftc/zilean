@@ -43,7 +43,7 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static async Task PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService)
+    private static async Task PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache)
     {
         if (state.IsRunning)
         {
@@ -61,7 +61,7 @@ public static class SearchEndpoints
             {
                 logger.LogInformation("On-demand scrape mutex lock acquired.");
                 state.IsRunning = true;
-                await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService).Invoke();
+                await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService, queryCache).Invoke();
             }
             finally
             {
@@ -75,7 +75,7 @@ public static class SearchEndpoints
         logger.LogWarning("Failed to acquire lock for on-demand scrape.");
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, [FromBody] DmmQueryRequest queryRequest)
+    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, IQueryCacheService queryCache, [FromBody] DmmQueryRequest queryRequest)
     {
         var sw = Stopwatch.StartNew();
         var timestamp = DateTime.UtcNow;
@@ -87,6 +87,14 @@ public static class SearchEndpoints
             {
                 results = Array.Empty<TorrentInfo>();
                 return TypedResults.Ok(results);
+            }
+
+            var cacheKey = $"search:{queryRequest.QueryText}";
+            var cached = await queryCache.GetCachedAsync(cacheKey);
+            if (cached != null)
+            {
+                logger.LogInformation("Cache hit for search query: {QueryText}", queryRequest.QueryText);
+                return TypedResults.Ok(cached);
             }
 
             logger.LogInformation("Performing unfiltered search for {QueryText}", queryRequest.QueryText);
@@ -106,6 +114,8 @@ public static class SearchEndpoints
                     logger.LogWarning(ex, "Failed to track search miss for query {QueryText}", queryRequest.QueryText);
                 }
             }
+
+            await queryCache.SetCachedAsync(cacheKey, results);
 
             return TypedResults.Ok(results);
         }
@@ -134,7 +144,7 @@ public static class SearchEndpoints
         }
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, [AsParameters] SearchFilteredRequest request)
+    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, IQueryCacheService queryCache, [AsParameters] SearchFilteredRequest request)
     {
 
         var sw = Stopwatch.StartNew();
@@ -143,6 +153,14 @@ public static class SearchEndpoints
 
         try
         {
+            var cacheKey = $"filtered:{request.Query}:{request.Season}:{request.Episode}:{request.Year}:{request.Language}:{request.Resolution}:{request.Category}:{request.ImdbId}";
+            var cached = await queryCache.GetCachedAsync(cacheKey);
+            if (cached != null)
+            {
+                logger.LogInformation("Cache hit for filtered search query: {Query}", request.Query);
+                return TypedResults.Ok(cached);
+            }
+
             logger.LogInformation("Performing filtered search for {@Request}", request);
 
             results = await torrentInfoService.SearchForTorrentInfoFiltered(new TorrentInfoFilter
@@ -170,6 +188,8 @@ public static class SearchEndpoints
                     logger.LogWarning(ex, "Failed to track search miss for query {QueryText}", request.Query);
                 }
             }
+
+            await queryCache.SetCachedAsync(cacheKey, results);
 
             return TypedResults.Ok(results);
         }

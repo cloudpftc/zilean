@@ -14,4 +14,7 @@ public class PersistenceSettings
     public int MaxPoolSize { get; set; } = 100;
     public int MinPoolSize { get; set; } = 5;
     public int ConnectionTimeout { get; set; } = 30;
+
+    // Checkpoint retention
+    public int CheckpointRetentionDays { get; set; } = 30;
 }

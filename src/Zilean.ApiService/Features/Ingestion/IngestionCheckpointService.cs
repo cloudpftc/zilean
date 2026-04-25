@@ -65,4 +65,16 @@ public class IngestionCheckpointService : IIngestionCheckpointService
             _logger.LogDebug("Deleted ingestion checkpoint for source {Source}", source);
         }
     }
+
+    public async Task<int> DeleteCompletedCheckpointsAsync(int retentionDays)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+        var deletedCount = await _dbContext.IngestionCheckpoints
+            .Where(c => c.Status == "completed" && c.Timestamp < cutoff)
+            .ExecuteDeleteAsync();
+
+        _logger.LogInformation("Cleaned up {Count} completed checkpoints older than {RetentionDays} days", deletedCount, retentionDays);
+
+        return deletedCount;
+    }
 }

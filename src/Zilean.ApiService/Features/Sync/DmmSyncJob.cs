@@ -1,9 +1,10 @@
 using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Ingestion;
+using Zilean.ApiService.Features.Search;
 
 namespace Zilean.ApiService.Features.Sync;
 
-public class DmmSyncJob(IShellExecutionService shellExecutionService, ILogger<DmmSyncJob> logger, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService) : IInvocable, ICancellableInvocable
+public class DmmSyncJob(IShellExecutionService shellExecutionService, ILogger<DmmSyncJob> logger, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache) : IInvocable, ICancellableInvocable
 {
     public CancellationToken CancellationToken { get; set; }
     private const string DmmSyncArg = "dmm-sync";
@@ -49,6 +50,16 @@ public class DmmSyncJob(IShellExecutionService shellExecutionService, ILogger<Dm
             }
 
             logger.LogInformation("Dmm SyncJob completed");
+
+            try
+            {
+                await queryCache.InvalidateAllAsync();
+                logger.LogInformation("Invalidated search cache after ingestion sync");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to invalidate search cache after ingestion sync");
+            }
         }
         catch (Exception ex)
         {

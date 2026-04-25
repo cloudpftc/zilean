@@ -28,4 +28,10 @@ public interface IIngestionCheckpointService
     /// </summary>
     /// <param name="source">The ingestion source identifier.</param>
     Task DeleteCheckpointAsync(string source);
+
+    /// <summary>
+    /// Deletes all completed checkpoints older than the specified retention days.
+    /// </summary>
+    /// <param name="retentionDays">The number of days to retain completed checkpoints.</param>
+    Task<int> DeleteCompletedCheckpointsAsync(int retentionDays);
 }
