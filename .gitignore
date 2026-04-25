@@ -11,3 +11,7 @@ src/Zilean.Scraper/python/
 src/Zilean.ApiService/python/
 
 Zilean.sln.DotSettings.user
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

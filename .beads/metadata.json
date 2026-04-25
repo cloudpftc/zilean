@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "zilean",
+  "project_id": "9f45591e-f6d5-470a-975c-f4a84b1095e5"
+}
