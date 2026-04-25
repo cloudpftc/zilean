@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Zilean.ApiService.Features.Audit;
+using Zilean.ApiService.Features.Ingestion;
 
 namespace Zilean.ApiService.Features.Search;
 
@@ -41,7 +42,7 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static async Task PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService)
+    private static async Task PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService)
     {
         if (state.IsRunning)
         {
@@ -59,7 +60,7 @@ public static class SearchEndpoints
             {
                 logger.LogInformation("On-demand scrape mutex lock acquired.");
                 state.IsRunning = true;
-                await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService).Invoke();
+                await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService).Invoke();
             }
             finally
             {

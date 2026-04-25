@@ -1,4 +1,5 @@
 using Zilean.ApiService.Features.Audit;
+using Zilean.ApiService.Features.Ingestion;
 
 namespace Zilean.ApiService.Features.Bootstrapping;
 
@@ -35,7 +36,8 @@ public class StartupService(
             await using var asyncScope = serviceProvider.CreateAsyncScope();
             var dbContext = asyncScope.ServiceProvider.GetRequiredService<ZileanDbContext>();
             var fileAuditLogService = asyncScope.ServiceProvider.GetRequiredService<IFileAuditLogService>();
-            var dmmJob = new DmmSyncJob(executionService, loggerFactory.CreateLogger<DmmSyncJob>(), dbContext, fileAuditLogService);
+            var ingestionQueueService = asyncScope.ServiceProvider.GetRequiredService<IIngestionQueueService>();
+            var dmmJob = new DmmSyncJob(executionService, loggerFactory.CreateLogger<DmmSyncJob>(), dbContext, fileAuditLogService, ingestionQueueService);
             var pagesExist = await dmmJob.ShouldRunOnStartup();
             if (!pagesExist)
             {
