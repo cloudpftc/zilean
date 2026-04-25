@@ -17,4 +17,9 @@ public class PersistenceSettings
 
     // Checkpoint retention
     public int CheckpointRetentionDays { get; set; } = 30;
+
+    // Dynamic batch size configuration
+    public int MaxMemoryMB { get; set; } = 0; // 0 = auto-detect from GC
+    public int MaxBatchSize { get; set; } = 50000;
+    public int MinBatchSize { get; set; } = 1000;
 }

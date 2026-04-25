@@ -21,18 +21,30 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
             return;
         }
 
-        // Dynamic batch size based on torrent count
-        var baseBatchSize = Configuration.Persistence.BulkInsertBatchSize;
-        var effectiveBatchSize = batchSize;
-        if (torrents.Count > 50000)
+        int effectiveBatchSize;
+        if (Configuration.Persistence.MaxMemoryMB > 0)
         {
-            effectiveBatchSize = Math.Min(baseBatchSize * 2, 5000);
+            const int estimatedBytesPerTorrent = 2048;
+            var maxBytes = Configuration.Persistence.MaxMemoryMB * 1024 * 1024;
+            var memoryBasedBatch = maxBytes / estimatedBytesPerTorrent;
+            effectiveBatchSize = Math.Clamp(
+                value: memoryBasedBatch,
+                min: Configuration.Persistence.MinBatchSize,
+                max: Configuration.Persistence.MaxBatchSize);
         }
-        if (torrents.Count > 100000)
+        else
         {
-            effectiveBatchSize = Math.Min(baseBatchSize * 3, 10000);
+            var gcInfo = GC.GetGCMemoryInfo();
+            var availableMemory = gcInfo.TotalAvailableMemoryBytes;
+            const int estimatedBytesPerTorrent = 2048;
+            var memoryBasedBatch = (int)(availableMemory / estimatedBytesPerTorrent);
+            effectiveBatchSize = Math.Clamp(
+                value: memoryBasedBatch,
+                min: Configuration.Persistence.MinBatchSize,
+                max: Configuration.Persistence.MaxBatchSize);
         }
-        logger.LogInformation("Using batch size {BatchSize} for {Count} torrents", effectiveBatchSize, torrents.Count);
+        logger.LogInformation("Using batch size {BatchSize} (max memory: {MaxMemoryMB} MB, auto: {Auto})",
+            effectiveBatchSize, Configuration.Persistence.MaxMemoryMB, Configuration.Persistence.MaxMemoryMB == 0);
 
         foreach (var torrentInfo in torrents)
         {

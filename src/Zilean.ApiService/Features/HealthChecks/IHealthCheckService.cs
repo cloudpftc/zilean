@@ -18,6 +18,12 @@ public interface IHealthCheckService
     Task<HealthStatus> CheckIngestionStatus();
 
     /// <summary>
+    /// Checks PostgreSQL extensions and indexes required for full-text search and indexing.
+    /// </summary>
+    /// <returns>A <see cref="HealthStatus"/> indicating the health of PostgreSQL indexes and extensions.</returns>
+    Task<HealthStatus> CheckIndexesAsync();
+
+    /// <summary>
     /// Aggregates all individual health checks into a single overall health report.
     /// </summary>
     /// <returns>An <see cref="OverallHealth"/> summarising the health of all subsystems.</returns>
