@@ -6,7 +6,7 @@ namespace Zilean.ApiService.Features.Search;
 
 public class QueryCacheService : IQueryCacheService
 {
-    private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan _defaultTtl = TimeSpan.FromMinutes(5);
 
     private readonly IMemoryCache _cache;
     private readonly ILogger<QueryCacheService> _logger;
@@ -35,7 +35,7 @@ public class QueryCacheService : IQueryCacheService
 
     public Task SetCachedAsync(string cacheKey, TorrentInfo[] results, TimeSpan? ttl = null)
     {
-        var effectiveTtl = ttl ?? DefaultTtl;
+        var effectiveTtl = ttl ?? _defaultTtl;
         _cache.Set(cacheKey, results, new MemoryCacheEntryOptions
         {
             AbsoluteExpirationRelativeToNow = effectiveTtl,

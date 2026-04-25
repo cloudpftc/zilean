@@ -79,7 +79,7 @@ public static class SearchEndpoints
     {
         var sw = Stopwatch.StartNew();
         var timestamp = DateTime.UtcNow;
-        TorrentInfo[] results;
+        TorrentInfo[] results = Array.Empty<TorrentInfo>();
 
         try
         {
@@ -107,7 +107,7 @@ public static class SearchEndpoints
             {
                 try
                 {
-                    await TrackSearchMissAsync(dbContext, queryRequest.QueryText, queryRequest.Category, logger);
+                    await TrackSearchMissAsync(dbContext, queryRequest.QueryText, null, logger);
                 }
                 catch (Exception ex)
                 {
@@ -149,7 +149,7 @@ public static class SearchEndpoints
 
         var sw = Stopwatch.StartNew();
         var timestamp = DateTime.UtcNow;
-        TorrentInfo[] results;
+        TorrentInfo[] results = Array.Empty<TorrentInfo>();
 
         try
         {

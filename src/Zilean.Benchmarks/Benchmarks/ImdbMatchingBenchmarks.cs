@@ -12,7 +12,7 @@ public class ImdbMatchingBenchmarks
     private List<string> _imdbTitles = null!;
     private Random _random = null!;
 
-    private static readonly string[] MovieTitles =
+    private static readonly string[] _movieTitles =
     [
         "The Shawshank Redemption", "The Godfather", "The Dark Knight", "Pulp Fiction",
         "The Lord of the Rings", "Fight Club", "Forrest Gump", "Inception",
@@ -29,7 +29,7 @@ public class ImdbMatchingBenchmarks
         "Loki", "WandaVision", "The Falcon", "Winter Soldier"
     ];
 
-    private static readonly string[] TvShowTitles =
+    private static readonly string[] _tvShowTitles =
     [
         "Breaking Bad", "Game of Thrones", "The Wire", "The Sopranos",
         "Friends", "The Office", "Parks and Recreation", "Brooklyn Nine-Nine",
@@ -40,15 +40,15 @@ public class ImdbMatchingBenchmarks
         "Euphoria", "The Last of Us", "House of the Dragon", "Ring of Power"
     ];
 
-    private static readonly string[] ReleaseGroups =
+    private static readonly string[] _releaseGroups =
     [
         "SPARKS", "MEMENTO", "TAM", "CMRG", "FLX", "METCON",
         "NOGRP", "XEM", "KOGI", "QCF", "DEEP", "NEO", "ViSUM"
     ];
 
-    private static readonly string[] Resolutions = ["720p", "1080p", "2160p", "4K"];
-    private static readonly string[] Sources = ["BluRay", "WEB-DL", "WEBRip", "HDRip", "DVDRip"];
-    private static readonly string[] Codecs = ["x264", "x265", "HEVC", "AVC", "XviD"];
+    private static readonly string[] _resolutions = ["720p", "1080p", "2160p", "4K"];
+    private static readonly string[] _sources = ["BluRay", "WEB-DL", "WEBRip", "HDRip", "DVDRip"];
+    private static readonly string[] _codecs = ["x264", "x265", "HEVC", "AVC", "XviD"];
 
     [GlobalSetup]
     public void Setup()
@@ -141,14 +141,14 @@ public class ImdbMatchingBenchmarks
             if (_random.NextDouble() > 0.3)
             {
                 // Movie
-                title = MovieTitles[_random.Next(MovieTitles.Length)];
+                title = _movieTitles[_random.Next(_movieTitles.Length)];
                 var year = 1970 + _random.Next(55);
                 title = $"{title} ({year})";
             }
             else
             {
                 // TV Show
-                title = TvShowTitles[_random.Next(TvShowTitles.Length)];
+                title = _tvShowTitles[_random.Next(_tvShowTitles.Length)];
                 var year = 2000 + _random.Next(25);
                 title = $"{title} ({year})";
             }
@@ -189,21 +189,21 @@ public class ImdbMatchingBenchmarks
 
             if (isMovie)
             {
-                baseTitle = MovieTitles[_random.Next(MovieTitles.Length)];
+                baseTitle = _movieTitles[_random.Next(_movieTitles.Length)];
             }
             else
             {
-                baseTitle = TvShowTitles[_random.Next(TvShowTitles.Length)];
+                baseTitle = _tvShowTitles[_random.Next(_tvShowTitles.Length)];
             }
 
             // Clean the title (replace spaces with dots)
             var cleanTitle = baseTitle.Replace(" ", ".").Replace(":", "").Replace("'", "");
 
             var year = 1970 + _random.Next(55);
-            var resolution = Resolutions[_random.Next(Resolutions.Length)];
-            var source = Sources[_random.Next(Sources.Length)];
-            var codec = Codecs[_random.Next(Codecs.Length)];
-            var group = ReleaseGroups[_random.Next(ReleaseGroups.Length)];
+            var resolution = _resolutions[_random.Next(_resolutions.Length)];
+            var source = _sources[_random.Next(_sources.Length)];
+            var codec = _codecs[_random.Next(_codecs.Length)];
+            var group = _releaseGroups[_random.Next(_releaseGroups.Length)];
 
             // Build torrent-style filename
             var filename = $"{cleanTitle}.{year}.{resolution}.{source}.{codec}-{group}";

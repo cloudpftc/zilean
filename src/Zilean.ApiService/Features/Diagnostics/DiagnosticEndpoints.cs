@@ -146,7 +146,7 @@ public static class DiagnosticEndpoints
         });
     }
 
-    private static Task<IResult> GetCacheStats(IQueryCacheService queryCache)
+    private static Task<Ok<CacheStats>> GetCacheStats(IQueryCacheService queryCache)
     {
         return Task.FromResult(TypedResults.Ok(queryCache.GetStats()));
     }

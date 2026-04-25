@@ -3,6 +3,7 @@ using Zilean.ApiService.Features.Dashboard.Components.Pages.Dashboard;
 using Zilean.ApiService.Features.HealthChecks;
 using Zilean.ApiService.Features.Ingestion;
 using Zilean.ApiService.Features.Search;
+using Zilean.Shared.Features.Ingestion;
 
 namespace Zilean.ApiService.Features.Bootstrapping;
 
