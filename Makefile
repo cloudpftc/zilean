@@ -23,11 +23,11 @@ build:
 	@$(DOTNET) restore -a $(ARCH)
 	@echo "==> Publishing Zilean.ApiService..."
 	@$(DOTNET) publish src/Zilean.ApiService/Zilean.ApiService.csproj \
-		-c $(CONFIG) --no-restore -a $(ARCH) \
+		-c $(CONFIG) --no-restore \
 		-o $(OUT_DIR)
 	@echo "==> Publishing Zilean.Scraper..."
 	@$(DOTNET) publish src/Zilean.Scraper/Zilean.Scraper.csproj \
-		-c $(CONFIG) --no-restore -a $(ARCH) \
+		-c $(CONFIG) --no-restore \
 		-o $(OUT_DIR)
 	@echo "==> Build complete. Output in $(OUT_DIR)/"
 

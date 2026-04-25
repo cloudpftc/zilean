@@ -48,6 +48,7 @@ services:
           cpus: "1"
     environment:
       # Required - used by DatabaseConfiguration to build connection string
+      - POSTGRES_HOST=zilean-db
       - POSTGRES_PASSWORD=postgres
 
       # Zilean config overrides (Zilean__ prefix maps to the "Zilean" JSON section)
