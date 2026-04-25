@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Npgsql;
 using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Ingestion;
 
@@ -74,7 +75,7 @@ public static class SearchEndpoints
         logger.LogWarning("Failed to acquire lock for on-demand scrape.");
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, [FromBody] DmmQueryRequest queryRequest)
+    private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, [FromBody] DmmQueryRequest queryRequest)
     {
         var sw = Stopwatch.StartNew();
         var timestamp = DateTime.UtcNow;
@@ -94,9 +95,19 @@ public static class SearchEndpoints
 
             logger.LogInformation("Unfiltered search for {QueryText} returned {Count} results", queryRequest.QueryText, results.Length);
 
-            return results.Length == 0
-                ? TypedResults.Ok(Array.Empty<TorrentInfo>())
-                : TypedResults.Ok(results);
+            if (results.Length == 0)
+            {
+                try
+                {
+                    await TrackSearchMissAsync(dbContext, queryRequest.QueryText, queryRequest.Category, logger);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to track search miss for query {QueryText}", queryRequest.QueryText);
+                }
+            }
+
+            return TypedResults.Ok(results);
         }
         catch
         {
@@ -123,7 +134,7 @@ public static class SearchEndpoints
         }
     }
 
-    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, IQueryAuditService auditService, [AsParameters] SearchFilteredRequest request)
+    private static async Task<Ok<TorrentInfo[]>> PerformFilteredSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmFilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, [AsParameters] SearchFilteredRequest request)
     {
 
         var sw = Stopwatch.StartNew();
@@ -148,9 +159,19 @@ public static class SearchEndpoints
 
             logger.LogInformation("Filtered search for {QueryText} returned {Count} results", request.Query, results.Length);
 
-            return results.Length == 0
-                ? TypedResults.Ok(Array.Empty<TorrentInfo>())
-                : TypedResults.Ok(results);
+            if (results.Length == 0)
+            {
+                try
+                {
+                    await TrackSearchMissAsync(dbContext, request.Query, request.Category, logger);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to track search miss for query {QueryText}", request.Query);
+                }
+            }
+
+            return TypedResults.Ok(results);
         }
         catch
         {
@@ -177,6 +198,40 @@ public static class SearchEndpoints
                 logger.LogWarning(ex, "Failed to log query audit for filtered search");
             }
         }
+    }
+
+    /// <summary>
+    /// Tracks a search miss by finding similar torrents via trigram similarity,
+    /// incrementing their miss count, and marking them as refresh pending.
+    /// </summary>
+    private static async Task TrackSearchMissAsync(ZileanDbContext dbContext, string? query, string? category, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return;
+        }
+
+        var cleanQuery = Parsing.CleanQuery(query);
+
+        logger.LogInformation("Tracking search miss for query: {Query}, category: {Category}", cleanQuery, category);
+
+        const string sql = """
+            UPDATE "Torrents"
+            SET "MissCount" = "MissCount" + 1,
+                "RefreshPending" = true
+            WHERE "CleanedParsedTitle" % @query
+              AND (@category IS NULL OR "Category" = @category)
+            """;
+
+        var parameters = new[]
+        {
+            new NpgsqlParameter("@query", cleanQuery),
+            new NpgsqlParameter("@category", string.IsNullOrEmpty(category) ? DBNull.Value : category),
+        };
+
+        var affectedRows = await dbContext.Database.ExecuteSqlRawAsync(sql, parameters);
+
+        logger.LogInformation("Tracked search miss for {Query}: marked {AffectedRows} similar torrents as refresh pending", cleanQuery, affectedRows);
     }
 
     private abstract class DmmUnfilteredInstance;
