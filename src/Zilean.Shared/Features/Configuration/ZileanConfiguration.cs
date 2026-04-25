@@ -18,6 +18,7 @@ public class ZileanConfiguration
     public ImdbConfiguration Imdb { get; set; } = new();
     public IngestionConfiguration Ingestion { get; set; } = new();
     public ParsingConfiguration Parsing { get; set; } = new();
+    public PersistenceSettings Persistence { get; set; } = new();
 
     public static void EnsureExists()
     {
