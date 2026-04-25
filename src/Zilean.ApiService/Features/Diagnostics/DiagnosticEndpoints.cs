@@ -105,9 +105,49 @@ public static class DiagnosticEndpoints
         });
     }
 
-    private static IResult GetStats() => Results.Ok(new
+    private static async Task<IResult> GetStats(ZileanDbContext dbContext, CancellationToken ct)
     {
-        status = "not_implemented",
-        message = "Stats endpoint coming soon"
-    });
+        var tableStats = await dbContext.Database
+            .SqlQuery<TableStatRaw>($"""
+                SELECT
+                    relname AS name,
+                    n_live_tup AS row_count,
+                    pg_total_relation_size(oid) AS size_bytes
+                FROM pg_stat_user_tables
+                ORDER BY pg_total_relation_size(oid) DESC
+                """)
+            .ToListAsync(ct);
+
+        var tables = tableStats.Select(t => new
+        {
+            name = t.Name,
+            rowCount = t.RowCount,
+            sizeBytes = t.SizeBytes,
+            sizeMb = Math.Round(t.SizeBytes / (1024.0 * 1024.0), 2)
+        }).ToList();
+
+        var totalDatabaseSizeBytes = await dbContext.Database
+            .SqlQuery<long>($"SELECT pg_database_size(current_database())")
+            .FirstOrDefaultAsync(ct);
+
+        var lastIngestionTime = await dbContext.IngestionQueues
+            .OrderByDescending(q => q.CreatedAt)
+            .Select(q => q.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        return TypedResults.Ok(new
+        {
+            tables,
+            totalDatabaseSizeBytes,
+            totalDatabaseSizeMb = Math.Round(totalDatabaseSizeBytes / (1024.0 * 1024.0), 2),
+            lastIngestionTime
+        });
+    }
+
+    private class TableStatRaw
+    {
+        public string Name { get; set; } = string.Empty;
+        public long RowCount { get; set; }
+        public long SizeBytes { get; set; }
+    }
 }
