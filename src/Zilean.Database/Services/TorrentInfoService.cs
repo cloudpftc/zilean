@@ -104,10 +104,16 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
             var sql =
                 """
                 SELECT
-                    *
+                    *,
+                    CASE
+                        WHEN "Category" ILIKE '%anime%' OR "Category" ILIKE '%TVAnime%'
+                        THEN similarity("CleanedParsedTitle", @query) * 1.5
+                        ELSE similarity("CleanedParsedTitle", @query)
+                    END AS "Score"
                 FROM "Torrents"
                 WHERE "ParsedTitle" % @query
                 AND Length("InfoHash") = 40
+                ORDER BY "Score" DESC, "IngestedAt" DESC
                 LIMIT 100;
                 """;
 

@@ -116,7 +116,11 @@ public class SearchTorrentsMetaV5
                 t."Container",
                 t."Extension",
                 t."Torrent",
-                similarity(t."CleanedParsedTitle", query) AS "Score",
+                CASE
+                    WHEN t."Category" ILIKE '%anime%' OR t."Category" ILIKE '%TVAnime%'
+                    THEN similarity(t."CleanedParsedTitle", query) * 1.5
+                    ELSE similarity(t."CleanedParsedTitle", query)
+                END AS "Score",
                 t."ImdbId",
                 i."Category" AS "ImdbCategory",
                 i."Title" AS "ImdbTitle",
