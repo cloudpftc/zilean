@@ -1,6 +1,7 @@
 using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Dashboard.Components.Pages.Dashboard;
 using Zilean.ApiService.Features.HealthChecks;
+using Zilean.ApiService.Features.Ingestion;
 
 namespace Zilean.ApiService.Features.Bootstrapping;
 
@@ -89,6 +90,12 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddFileAuditService(this IServiceCollection services)
     {
         services.AddScoped<IFileAuditLogService, FileAuditLogService>();
+        return services;
+    }
+
+    public static IServiceCollection AddIngestionQueueService(this IServiceCollection services)
+    {
+        services.AddScoped<IIngestionQueueService, IngestionQueueService>();
         return services;
     }
 
