@@ -155,7 +155,7 @@ public class TorrentInfoService(ILogger<TorrentInfoService> logger, ZileanConfig
         }, "Error finding unfiltered dmm entries.");
     }
 
-public async Task<TorrentInfo[]> SearchForTorrentInfoFiltered(TorrentInfoFilter filter, int? limit = null)
+    public async Task<TorrentInfo[]> SearchForTorrentInfoFiltered(TorrentInfoFilter filter, int? limit = null)
     {
         var cleanQuery = Parsing.CleanQuery(filter.Query);
         var imdbId = EnsureCorrectFormatImdbId(filter);

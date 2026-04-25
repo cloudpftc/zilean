@@ -14,4 +14,14 @@ public class DmmConfiguration
     /// Default is 1.5x. Set to 1.0 to disable anime boosting.
     /// </summary>
     public double AnimeCategoryBoost { get; set; } = 1.5;
+
+    /// <summary>
+    /// Boost multiplier for anime torrents marked as complete series. Default 2.0x.
+    /// </summary>
+    public double AnimeCompleteSeriesBoost { get; set; } = 2.0;
+
+    /// <summary>
+    /// Preferred audio type for anime: "subbed", "dubbed", or "any". Default "any".
+    /// </summary>
+    public string AnimeAudioPreference { get; set; } = "any";
 }
