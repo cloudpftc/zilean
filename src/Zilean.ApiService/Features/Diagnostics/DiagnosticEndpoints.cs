@@ -3,27 +3,42 @@ namespace Zilean.ApiService.Features.Diagnostics;
 public static class DiagnosticEndpoints
 {
     private const string GroupName = "diagnostics";
-    private const string Health = "/health";
 
     public static WebApplication MapDiagnosticEndpoints(this WebApplication app)
     {
-        app.MapGroup(GroupName)
+        var group = app.MapGroup(GroupName)
             .WithTags(GroupName)
-            .MapDiagnosticHealth()
-            .DisableAntiforgery()
-            .AllowAnonymous();
+            .RequireAuthorization();
+
+        group.MapGet("/freshness", GetFreshness);
+        group.MapGet("/queue", GetQueue);
+        group.MapGet("/misses", GetMisses);
+        group.MapGet("/stats", GetStats);
 
         return app;
     }
 
-    private static RouteGroupBuilder MapDiagnosticHealth(this RouteGroupBuilder group)
+    private static IResult GetFreshness() => Results.Ok(new
     {
-        group.MapGet(Health, async (IHealthCheckService healthCheckService, CancellationToken ct) =>
-        {
-            var status = await healthCheckService.GetHealthStatusAsync(ct);
-            return Results.Ok(status);
-        });
+        status = "not_implemented",
+        message = "Freshness tracking coming soon"
+    });
 
-        return group;
-    }
+    private static IResult GetQueue() => Results.Ok(new
+    {
+        status = "not_implemented",
+        message = "Queue tracking coming soon"
+    });
+
+    private static IResult GetMisses() => Results.Ok(new
+    {
+        status = "not_implemented",
+        message = "Miss tracking coming soon"
+    });
+
+    private static IResult GetStats() => Results.Ok(new
+    {
+        status = "not_implemented",
+        message = "Stats endpoint coming soon"
+    });
 }
