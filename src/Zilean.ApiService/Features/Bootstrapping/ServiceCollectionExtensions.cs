@@ -1,4 +1,11 @@
 using Zilean.ApiService.Features.Dashboard.Components.Pages.Dashboard;
+using Zilean.ApiService.Features.BackgroundWorkers;
+using Zilean.Scraper.Features.Ingestion.Checkpointing;
+using Zilean.Scraper.Features.Ingestion.Segments;
+using Zilean.Scraper.Features.Ingestion.RefreshQueue;
+using Zilean.Scraper.Features.Search.Normalization;
+using Zilean.Shared.Features.Audit;
+using Zilean.Shared.Features.Configuration;
 
 namespace Zilean.ApiService.Features.Bootstrapping;
 
@@ -16,7 +23,24 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddStartupHostedServices(this IServiceCollection services) =>
         services.AddHostedService<StartupService>()
-            .AddHostedService<ConfigurationUpdaterService>();
+            .AddHostedService<ConfigurationUpdaterService>()
+            .AddHostedService<RefreshJobProcessor>();
+
+    public static IServiceCollection AddAggressivePersistenceServices(this IServiceCollection services, IConfiguration configuration)
+    {
+        // Bind aggressive persistence options
+        services.Configure<AggressivePersistenceOptions>(
+            configuration.GetSection(AggressivePersistenceOptions.SectionName));
+
+        // Register core services
+        services.AddScoped<CheckpointService>();
+        services.AddScoped<SegmentService>();
+        services.AddScoped<RefreshJobService>();
+        services.AddScoped<AnimeNormalizationService>();
+        services.AddSingleton<AuditLogger>();
+
+        return services;
+    }
 
     public static IServiceCollection ConditionallyRegisterDmmJob(this IServiceCollection services,
         ZileanConfiguration configuration)
