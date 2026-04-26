@@ -67,6 +67,20 @@ public class ProwlarrSyncJob(
         }
     }
 
+    public async Task<int> SyncSingleIndexerAsync(string sourceName)
+    {
+        var indexer = configuration.Prowlarr.Indexers
+            .FirstOrDefault(i => i.SourceName.Equals(sourceName, StringComparison.OrdinalIgnoreCase));
+
+        if (indexer == null)
+        {
+            throw new InvalidOperationException($"Indexer '{sourceName}' not found in configuration.");
+        }
+
+        logger.LogInformation("[ProwlarrSync] Manually triggering sync for indexer '{SourceName}'", sourceName);
+        return await SyncIndexerAsync(indexer);
+    }
+
     private async Task<int> SyncIndexerAsync(ProwlarrIndexer indexer)
     {
         var stats = await GetOrCreateStatsAsync(indexer.SourceName);
@@ -101,7 +115,7 @@ public class ProwlarrSyncJob(
             }
 
             var allOlderOrEqual = torrents.All(t => t.IngestedAt <= lastSyncAt);
-            if (allOlderOrEqual && page > 1)
+            if (allOlderOrEqual)
             {
                 break;
             }
@@ -123,12 +137,6 @@ public class ProwlarrSyncJob(
             else
             {
                 logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: 0 new torrents (all at or before checkpoint)", indexer.SourceName, page);
-            }
-
-            var pageMaxDateAll = torrents.Max(t => t.IngestedAt);
-            if (maxPubDate == null || pageMaxDateAll > maxPubDate)
-            {
-                maxPubDate = pageMaxDateAll;
             }
 
             offset += PageSize;

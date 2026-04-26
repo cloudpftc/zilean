@@ -1,3 +1,4 @@
+using Zilean.ApiService.Features.Admin;
 using Zilean.ApiService.Features.Audit;
 using Zilean.ApiService.Features.Diagnostics;
 
@@ -41,7 +42,8 @@ public static class WebApplicationExtensions
             .MapHealthCheckEndpoints()
             .MapDiagnosticEndpoints()
             .MapQueryAuditEndpoints()
-            .MapFileAuditEndpoints();
+            .MapFileAuditEndpoints()
+            .MapAdminEndpoints();
 
         if (configuration.EnableDashboard)
         {
