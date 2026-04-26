@@ -1,0 +1,2 @@
+src/Zilean.ApiService/Features/Bootstrapping/ServiceCollectionExtensions.cs:        services.AddTransient<ProwlarrSyncJob>();
+src/Zilean.ApiService/Features/Bootstrapping/ServiceCollectionExtensions.cs:                    scheduler.Schedule<ProwlarrSyncJob>()

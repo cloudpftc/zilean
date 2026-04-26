@@ -1,0 +1,6 @@
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "1073741824"

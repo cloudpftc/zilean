@@ -1,0 +1,7 @@
+Test run for /home/pedro/projects/zilean/tests/Zilean.Tests/bin/Debug/net9.0/Zilean.Tests.dll (.NETCoreApp,Version=v9.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Total:     9, Duration: 867 ms - Zilean.Tests.dll (net9.0)

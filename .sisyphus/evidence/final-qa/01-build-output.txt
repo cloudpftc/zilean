@@ -1,0 +1,19 @@
+  Determining projects to restore...
+/home/pedro/projects/zilean/src/Zilean.Scraper/Zilean.Scraper.csproj : warning NU1902: Package 'KubernetesClient' 15.0.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w7r3-mgwf-4mqq [/home/pedro/projects/zilean/Zilean.sln]
+  All projects are up-to-date for restore.
+/home/pedro/projects/zilean/src/Zilean.Scraper/Zilean.Scraper.csproj : warning NU1902: Package 'KubernetesClient' 15.0.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w7r3-mgwf-4mqq
+  Zilean.Shared -> /home/pedro/projects/zilean/src/Zilean.Shared/bin/Debug/net9.0/Zilean.Shared.dll
+  Zilean.Database -> /home/pedro/projects/zilean/src/Zilean.Database/bin/Debug/net9.0/Zilean.Database.dll
+  Zilean.Scraper -> /home/pedro/projects/zilean/src/Zilean.Scraper/bin/Debug/net9.0/scraper.dll
+  Zilean.ApiService -> /home/pedro/projects/zilean/src/Zilean.ApiService/bin/Debug/net9.0/zilean-api.dll
+  Zilean.Benchmarks -> /home/pedro/projects/zilean/src/Zilean.Benchmarks/bin/Debug/net9.0/Zilean.Benchmarks.dll
+  Zilean.Tests -> /home/pedro/projects/zilean/tests/Zilean.Tests/bin/Debug/net9.0/Zilean.Tests.dll
+
+Build succeeded.
+
+/home/pedro/projects/zilean/src/Zilean.Scraper/Zilean.Scraper.csproj : warning NU1902: Package 'KubernetesClient' 15.0.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w7r3-mgwf-4mqq [/home/pedro/projects/zilean/Zilean.sln]
+/home/pedro/projects/zilean/src/Zilean.Scraper/Zilean.Scraper.csproj : warning NU1902: Package 'KubernetesClient' 15.0.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w7r3-mgwf-4mqq
+    2 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:04.08

@@ -1,0 +1,4 @@
+# Prowlarr Settings              #
+PROWLARR_URL=
+PROWLARR_API_KEY=
+PROWLARR_INDEXERS=[]

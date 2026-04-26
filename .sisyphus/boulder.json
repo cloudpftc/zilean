@@ -45,6 +45,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-04-26T21:27:28.678Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`: Verify ProwlarrSyncJob built, config binds, endpoints respond, docker memory 1G, no broken DMM endpoints. VERDICT.",
+      "session_id": "ses_2344cc7e2ffeL7FL04In7sJ8Ut",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-26T21:32:38.091Z"
     }
   }
 }

@@ -584,10 +584,10 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`: Verify ProwlarrSyncJob built, config binds, endpoints respond, docker memory 1G, no broken DMM endpoints. VERDICT.
-- [ ] F2. **Code Quality Review** — `unspecified-high`: `dotnet build` + `dotnet test`. Check code quality. VERDICT.
-- [ ] F3. **Real QA Execution** — `unspecified-high`: Run all curl-based QA scenarios. Evidence to `.sisyphus/evidence/final-qa/`. VERDICT.
-- [ ] F4. **Scope Fidelity Check** — `deep`: Verify exactly 1 unified job built, no extra code, no DMM breakage. VERDICT.
+- [x] F1. **Plan Compliance Audit** — `oracle`: APPROVED. All Must Have items implemented, all Must NOT Have guardrails respected, all deliverables present, build 0 errors, tests pass.
+- [x] F2. **Code Quality Review** — `unspecified-high`: APPROVED. 0 errors, 9/9 tests pass, no TODOs/FIXMEs, SQL parameterized, no API key logging, consistent patterns.
+- [x] F3. **Real QA Execution** — `unspecified-high`: APPROVED. All 7 success criteria verified with evidence saved to `.sisyphus/evidence/final-qa/`.
+- [x] F4. **Scope Fidelity Check** — `deep`: APPROVED. Exactly 1 unified job, no adapter pattern, no DMM breakage, no new packages, no scope creep.
 
 ---
 

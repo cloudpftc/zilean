@@ -1,0 +1,4 @@
+          memory: "536870912"
+          memory: "536870912"
+          memory: "1073741824"
+      Zilean__Persistence__MaxMemoryMB: "0"
