@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace Zilean.Shared.Features.Dmm;
 
 public class TorrentInfo
@@ -136,6 +138,10 @@ public class TorrentInfo
 
     [JsonPropertyName("torrent")]
     public bool? Torrent { get; set; } = false;
+
+    [JsonPropertyName("score")]
+    [NotMapped]
+    public double? Score { get; set; }
 
     [JsonPropertyName("category")]
     public string Category { get; set; } = default!;
