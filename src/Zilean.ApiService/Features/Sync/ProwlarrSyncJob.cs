@@ -145,6 +145,9 @@ public class ProwlarrSyncJob(
             }
 
             offset += PageSize;
+
+            // Respect Prowlarr rate limits: 1s delay between pages
+            await Task.Delay(1000, CancellationToken);
         }
 
         stats.LastSyncAt = maxPubDate ?? stats.LastSyncAt;
