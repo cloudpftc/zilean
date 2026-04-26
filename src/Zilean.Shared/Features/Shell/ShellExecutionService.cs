@@ -31,7 +31,7 @@ public class ShellExecutionService(ILogger<ShellExecutionService> logger) : IShe
                 .WithWorkingDirectory(executionDirectory)
                 .WithArguments(arguments)
                 .WithEnvironmentVariables(options.EnvironmentVariables)
-                .WithValidation(CommandResultValidation.None)
+                .WithValidation(CommandResultValidation.ZeroExitCode)
                 .WithStandardOutputPipe(PipeTarget.ToStream(stdOut))
                 .WithStandardErrorPipe(PipeTarget.ToStream(stdErr))
                 .ExecuteAsync(options.CancellationToken);

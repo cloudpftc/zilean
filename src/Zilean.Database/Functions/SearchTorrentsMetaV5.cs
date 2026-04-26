@@ -60,7 +60,7 @@ public class SearchTorrentsMetaV5
             "Container" TEXT,
             "Extension" TEXT,
             "Torrent" BOOLEAN,
-            "Score" REAL,
+            "Score" DOUBLE PRECISION,
             "ImdbId" TEXT,
             "ImdbCategory" TEXT,
             "ImdbTitle" TEXT,
@@ -118,8 +118,8 @@ public class SearchTorrentsMetaV5
                 t."Torrent",
                 CASE
                     WHEN t."Category" ILIKE '%anime%' OR t."Category" ILIKE '%TVAnime%'
-                    THEN similarity(t."CleanedParsedTitle", query) * 1.5
-                    ELSE similarity(t."CleanedParsedTitle", query)
+                    THEN CAST(similarity(t."CleanedParsedTitle", query) * 1.5 AS DOUBLE PRECISION)
+                    ELSE CAST(similarity(t."CleanedParsedTitle", query) AS DOUBLE PRECISION)
                 END AS "Score",
                 t."ImdbId",
                 i."Category" AS "ImdbCategory",
