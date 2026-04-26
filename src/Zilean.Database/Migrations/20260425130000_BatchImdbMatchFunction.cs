@@ -15,13 +15,14 @@ public partial class BatchImdbMatchFunction : Migration
                 p_title TEXT,
                 p_year INTEGER DEFAULT NULL,
                 p_category TEXT DEFAULT NULL
-            ) RETURNS TABLE(imdb_id TEXT, matched_title TEXT, matched_year INTEGER, score DOUBLE PRECISION) AS $$
+            ) RETURNS TABLE(imdb_id TEXT, matched_title TEXT, matched_year INTEGER, score REAL) AS $$
             BEGIN
                 RETURN QUERY
                 SELECT "ImdbId", "Title", "Year",
                        word_similarity(p_title, "Title") AS score
                 FROM public."ImdbFiles"
-                WHERE word_similarity(p_title, "Title") > 0.85
+                WHERE "Title" % p_title
+                  AND word_similarity(p_title, "Title") > 0.45
                   AND (p_year IS NULL OR "Year" = 0 OR ABS("Year" - p_year) <= 1)
                   AND (p_category IS NULL OR
                        (p_category = 'movie' AND "Category" IN ('movie', 'tvMovie')) OR

@@ -12,8 +12,7 @@ public static class QueryAuditEndpoints
     public static WebApplication MapQueryAuditEndpoints(this WebApplication app)
     {
         var group = app.MapGroup(GroupName)
-            .WithTags(GroupName)
-            .RequireAuthorization();
+            .WithTags(GroupName);
 
         group.MapGet("/recent", GetRecentQueries);
         group.MapGet("/top", GetTopQueries);

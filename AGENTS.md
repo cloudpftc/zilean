@@ -148,3 +148,82 @@ For more details, see README.md and docs/QUICKSTART.md.
 - If push fails, resolve and retry until it succeeds
 
 <!-- END BEADS INTEGRATION -->
+
+## Diagnostic & Debug Endpoints (MANDATORY)
+
+**CRITICAL**: This project exposes HTTP diagnostic endpoints on port **8181**. When debugging, investigating issues, or checking system state, you MUST use these endpoints instead of raw `docker exec psql` queries or log grepping. These endpoints are purpose-built for exactly the analysis you need.
+
+### Base URL
+```
+http://localhost:8181
+```
+
+### Health Checks (no auth required)
+
+| Endpoint | Method | Purpose | Example |
+|----------|--------|---------|---------|
+| `/healthchecks/ping` | GET | Liveness check - returns timestamp + "Pong!" | `curl http://localhost:8181/healthchecks/ping` |
+| `/healthchecks/health` | GET | Full health report - PostgreSQL indexes, extensions, overall status. Returns 200 if healthy, 503 if not | `curl http://localhost:8181/healthchecks/health \| jq .` |
+
+### Diagnostics (core debugging - use these FIRST)
+
+| Endpoint | Method | Purpose | Response Fields | Example |
+|----------|--------|---------|-----------------|---------|
+| `/diagnostics/stats` | GET | **Database table stats** - row counts, sizes, total DB size, last ingestion time. REPLACES `SELECT COUNT(*) FROM ...` | `tables[].{name, rowCount, sizeBytes, sizeMb}`, `totalDatabaseSizeBytes`, `totalDatabaseSizeMb`, `lastIngestionTime` | `curl http://localhost:8181/diagnostics/stats \| jq '.tables[] \| {name, rowCount, sizeMb}'` |
+| `/diagnostics/freshness` | GET | **Torrent freshness by category** - last updated timestamps, age in hours, torrent counts per category | `sources[].{name, lastUpdated, ageHours, torrentCount}`, `overallAgeHours`, `totalTorrents` | `curl http://localhost:8181/diagnostics/freshness \| jq .` |
+| `/diagnostics/queue` | GET | **Ingestion queue status** - pending/processing/completed/failed counts, oldest 10 pending items with infohash and retry count | `pending`, `processing`, `completed`, `failed`, `oldestPending[].{id, infoHash, createdAt, retryCount}` | `curl http://localhost:8181/diagnostics/queue \| jq .` |
+| `/diagnostics/misses` | GET | **Search miss tracking** - total misses across all torrents, top 20 most-missed titles with imdbId and category | `totalMisses`, `topMissed[].{title, missCount, imdbId, category}` | `curl http://localhost:8181/diagnostics/misses \| jq .` |
+| `/diagnostics/cache` | GET | **Query cache statistics** - hit/miss rates, cache size, entries | Cache stats object | `curl http://localhost:8181/diagnostics/cache \| jq .` |
+
+### Search & Content (verify data is queryable)
+
+| Endpoint | Method | Auth | Purpose | Example |
+|----------|--------|------|---------|---------|
+| `/dmm/search` | POST | None | Search torrents by title - returns matching TorrentInfo[] | `curl -X POST http://localhost:8181/dmm/search -H 'Content-Type: application/json' -d '{"queryText":"Batman"}'` |
+| `/dmm/filtered` | GET | None | Filtered search with season/episode/year/language/resolution/category/imdbId params | `curl 'http://localhost:8181/dmm/filtered?query=Batman&category=movie'` |
+| `/dmm/on-demand-scrape` | GET | API Key | Trigger DMM sync job on-demand | `curl -H 'X-API-Key: test-api-key-123' http://localhost:8181/dmm/on-demand-scrape` |
+| `/imdb/search` | GET | None | Search IMDB files by query/year/category | `curl 'http://localhost:8181/imdb/search?query=Batman&year=2022'` |
+
+### Torrents (API key required)
+
+| Endpoint | Method | Auth | Purpose | Example |
+|----------|--------|------|---------|---------|
+| `/torrents/all` | GET | API Key | Stream ALL torrents as JSON array (name, infoHash, size) | `curl -H 'X-API-Key: test-api-key-123' http://localhost:8181/torrents/all` |
+| `/torrents/checkcached` | GET | API Key | Check if specific infohashes exist in DB | `curl -H 'X-API-Key: test-api-key-123' 'http://localhost:8181/torrents/checkcached?hashes=abc123,def456'` |
+
+### Audit (query and file operation history)
+
+| Endpoint | Method | Purpose | Example |
+|----------|--------|---------|---------|
+| `/audit/queries/recent` | GET | Recent search queries with result counts and duration | `curl 'http://localhost:8181/audit/queries/recent?limit=20'` |
+| `/audit/queries/top` | GET | Most frequent search queries | `curl 'http://localhost:8181/audit/queries/top?limit=20'` |
+| `/audit/queries/range` | GET | Queries within a date range | `curl 'http://localhost:8181/audit/queries/range?start=2026-04-25&end=2026-04-26'` |
+| `/api/audit/files/recent` | GET | Recent file audit logs (scrape operations) | `curl 'http://localhost:8181/api/audit/files/recent?limit=20'` |
+| `/api/audit/files/by-operation` | GET | Filter file audits by operation type | `curl 'http://localhost:8181/api/audit/files/by-operation?operation=dmm-download&limit=20'` |
+
+### Debug Workflow (use in this order)
+
+1. **Is the service running?** → `/healthchecks/ping`
+2. **Is the database healthy?** → `/healthchecks/health`
+3. **What's in the database?** → `/diagnostics/stats` (table row counts + sizes)
+4. **Is data fresh?** → `/diagnostics/freshness` (age of torrents by category)
+5. **Is ingestion working?** → `/diagnostics/queue` (pending/failed items)
+6. **Are searches returning results?** → `/dmm/search` with a known title
+7. **What are users searching for?** → `/audit/queries/recent`
+8. **What's failing to match?** → `/diagnostics/misses`
+
+### Anti-Pattern (NEVER do this)
+
+```bash
+# WRONG - bypassing the diagnostic endpoints you built
+docker exec zilean-db psql -U postgres -d zilean -c "SELECT COUNT(*) FROM \"Torrents\";"
+docker exec zilean-db psql -U postgres -d zilean -c "SELECT * FROM pg_stat_user_tables;"
+docker logs zilean 2>&1 | grep -E "something" | tail -50
+
+# RIGHT - use the endpoints
+curl -s http://localhost:8181/diagnostics/stats | jq '.tables[] | {name, rowCount, sizeMb}'
+curl -s http://localhost:8181/diagnostics/freshness | jq .
+curl -s http://localhost:8181/diagnostics/queue | jq .
+```
+
+**Rule**: If a diagnostic endpoint exists that answers your question, USE IT. Only fall back to raw psql or log grepping if the endpoint does not cover your specific need. If you find yourself needing data the endpoints don't provide, that's a signal to ADD a new diagnostic endpoint.

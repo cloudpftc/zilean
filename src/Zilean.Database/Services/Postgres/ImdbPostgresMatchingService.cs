@@ -33,12 +33,13 @@ public class ImdbPostgresMatchingService(ILogger<ImdbPostgresMatchingService> lo
         await connection.OpenAsync();
 
         await connection.ExecuteAsync("""
-            CREATE TEMPORARY TABLE torrent_batch (
+            CREATE TEMPORARY TABLE IF NOT EXISTS torrent_batch (
                 info_hash TEXT PRIMARY KEY,
                 cleaned_parsed_title TEXT,
                 year INTEGER,
                 category TEXT
-            ) ON COMMIT DROP;
+            );
+            TRUNCATE torrent_batch;
             """);
 
         var insertSql = """
@@ -56,11 +57,29 @@ public class ImdbPostgresMatchingService(ILogger<ImdbPostgresMatchingService> lo
 
         await connection.ExecuteAsync(insertSql, batchParams);
 
-        var matches = await connection.QueryAsync<(string InfoHash, string ImdbId, string MatchedTitle, int MatchedYear, double Score)>(
+        // Use a direct SQL query with DISTINCT ON instead of CROSS JOIN LATERAL
+        // This processes all torrents in a single query instead of N separate function calls
+        var matches = await connection.QueryAsync<(string InfoHash, string ImdbId, string MatchedTitle, int MatchedYear, float Score)>(
             """
-            SELECT tb.info_hash, m.imdb_id, m.matched_title, m.matched_year, m.score
+            SELECT DISTINCT ON (tb.info_hash)
+                tb.info_hash,
+                i."ImdbId" AS imdb_id,
+                i."Title" AS matched_title,
+                i."Year" AS matched_year,
+                word_similarity(tb.cleaned_parsed_title, i."Title") AS score
             FROM torrent_batch tb
-            CROSS JOIN LATERAL match_torrents_to_imdb(tb.cleaned_parsed_title, tb.year, tb.category) m
+            CROSS JOIN LATERAL (
+                SELECT "ImdbId", "Title", "Year"
+                FROM public."ImdbFiles"
+                WHERE "Title" % tb.cleaned_parsed_title
+                  AND word_similarity(tb.cleaned_parsed_title, "Title") > 0.45
+                  AND (tb.year IS NULL OR "Year" = 0 OR ABS("Year" - tb.year) <= 1)
+                  AND (tb.category IS NULL OR
+                       (tb.category = 'movie' AND "Category" IN ('movie', 'tvMovie')) OR
+                       (tb.category = 'tvSeries' AND "Category" IN ('tvSeries', 'tvMiniSeries', 'tvShort', 'tvSpecial')))
+                ORDER BY word_similarity(tb.cleaned_parsed_title, "Title") DESC
+                LIMIT 1
+            ) i
             """);
 
         var matchList = matches.ToList();

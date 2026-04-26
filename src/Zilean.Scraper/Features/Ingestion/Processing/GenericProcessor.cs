@@ -94,6 +94,7 @@ public abstract class GenericProcessor<TInput>(
             }
 
             var distinctTorrents = torrents.DistinctBy(t => t.InfoHash).ToList();
+            _logger.LogDebug("Starting batch processing, count={Count}", distinctTorrents.Count);
 
             _logger.LogInformation("Removed duplicate hashes: {Count}", torrents.Count - distinctTorrents.Count);
 
@@ -124,10 +125,11 @@ public abstract class GenericProcessor<TInput>(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error processing batch of torrents. Batch size: {BatchSize}", batch.Count);
+            _logger.LogError(ex, "Error processing batch of torrents. Batch size: {BatchSize}", batch.Count);
         }
         finally
         {
+            _logger.LogDebug("Cleaning up batch resources");
             torrents.Clear();
             _torrentsListPool.Return(torrents);
         }

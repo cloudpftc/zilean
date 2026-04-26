@@ -23,7 +23,16 @@ public class DmmFileDownloader(ILogger<DmmFileDownloader> logger, ZileanConfigur
             if (DateTime.UtcNow - dmmLastImport.OccuredAt < TimeSpan.FromMinutes(configuration.Dmm.MinimumReDownloadIntervalMinutes))
             {
                 logger.LogInformation("DMM Hashlists download not required as last download was less than the configured {Minutes} minutes re-download interval set in DMM Configuration.", configuration.Dmm.MinimumReDownloadIntervalMinutes);
-                return tempDirectory;
+                // Ensure directory exists even when skipping download (e.g., new container)
+                if (!Directory.Exists(tempDirectory))
+                {
+                    logger.LogWarning("Temp directory {TempDirectory} does not exist despite recent import — forcing re-download", tempDirectory);
+                    // Fall through to download logic below
+                }
+                else
+                {
+                    return tempDirectory;
+                }
             }
         }
 

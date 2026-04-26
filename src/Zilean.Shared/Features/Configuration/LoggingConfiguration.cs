@@ -11,14 +11,17 @@ public static class LoggingConfiguration
             "MinimumLevel": {
               "Default": "Debug",
               "Override": {
-                "Microsoft": "Information",
+                "Microsoft": "Warning",
                 "System": "Warning",
                 "System.Net.Http.HttpClient.Scraper.LogicalHandler": "Information",
                 "System.Net.Http.HttpClient.Scraper.ClientHandler": "Information",
                 "Microsoft.AspNetCore.Hosting.Diagnostics": "Error",
+                "Microsoft.AspNetCore.Routing.EndpointMiddleware": "Warning",
                 "Microsoft.AspNetCore.DataProtection": "Error",
-                "Microsoft.EntityFrameworkCore.Database.Command": "Information",
-                "Coravel": "Information"
+                "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                "Microsoft.EntityFrameworkCore.Query": "Warning",
+                "Coravel": "Information",
+                "Zilean": "Debug"
               }
             },
             "WriteTo": [
@@ -27,7 +30,7 @@ public static class LoggingConfiguration
                 "Args": {
                   "path": "/app/data/logs/zilean-.log",
                   "rollingInterval": "Day",
-                  "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                  "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} | {Message:lj}{NewLine}{Exception}",
                   "rollOnFileSizeLimit": true,
                   "fileSizeLimitBytes": 104857600,
                   "retainedFileCountLimit": 14

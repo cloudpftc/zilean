@@ -1,14 +1,20 @@
-﻿var builder = WebApplication.CreateBuilder(args);
+﻿using Serilog;
 
-builder.Configuration.AddConfigurationFiles();
-
-// Ensure logs directory exists for Serilog file sink
 var logsDir = Path.Combine(AppContext.BaseDirectory, "data", "logs");
 Directory.CreateDirectory(logsDir);
 
-var zileanConfiguration = builder.Configuration.GetZileanConfiguration();
+var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddConfigurationFiles();
+
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 builder.AddOtlpServiceDefaults();
+
+var zileanConfiguration = builder.Configuration.GetZileanConfiguration();
 
 builder.Services
     .AddConfiguration(zileanConfiguration)
@@ -34,4 +40,15 @@ app.UseZileanRequired(zileanConfiguration);
 app.MapZileanEndpoints(zileanConfiguration);
 app.Services.SetupScheduling(zileanConfiguration);
 
-app.Run();
+try
+{
+    await app.RunAsync();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}

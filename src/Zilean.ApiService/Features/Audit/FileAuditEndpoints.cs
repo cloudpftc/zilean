@@ -10,8 +10,7 @@ public static class FileAuditEndpoints
     public static WebApplication MapFileAuditEndpoints(this WebApplication app)
     {
         var group = app.MapGroup(GroupName)
-            .WithTags(GroupName)
-            .RequireAuthorization();
+            .WithTags(GroupName);
 
         group.MapGet("/recent", GetRecentLogs);
         group.MapGet("/by-operation", GetLogsByOperation);

@@ -78,7 +78,7 @@ public class HealthCheckService : IHealthCheckService
             foreach (var idx in _requiredIndexes)
             {
                 var exists = await connection.QuerySingleOrDefaultAsync<string>(
-                    "SELECT indexname FROM pg_indexes WHERE tablename = 'torrents' AND indexname = @idx",
+                    "SELECT indexname FROM pg_indexes WHERE tablename = 'Torrents' AND indexname = @idx",
                     new { idx });
                 if (string.IsNullOrEmpty(exists))
                     missingIndexes.Add(idx);

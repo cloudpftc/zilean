@@ -72,7 +72,11 @@ public class ConfigurationTests
                 .AddJsonFile(ConfigurationLiterals.SettingsConfigFilename, false, false)
                 .Build();
 
-        var zileanConfig = configuration.GetZileanConfiguration();
+        // Set required environment variable for DatabaseConfiguration
+        Environment.SetEnvironmentVariable("POSTGRES_PASSWORD", "test");
+        try
+        {
+            var zileanConfig = configuration.GetZileanConfiguration();
 
         // Assert
         zileanConfig.Should().NotBeNull();
@@ -125,6 +129,11 @@ public class ConfigurationTests
         zileanConfig.Ingestion.Kubernetes.KubernetesSelectors[0].LabelSelector.Should().Be("app.elfhosted.com/name=zurg");
         zileanConfig.Ingestion.Kubernetes.KubernetesSelectors[0].EndpointType.Should().Be(GenericEndpointType.Zurg);
         zileanConfig.Ingestion.Kubernetes.KubeConfigFile.Should().Be("/$HOME/.kube/config");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("POSTGRES_PASSWORD", null);
+        }
 
         // Cleanup
         Directory.Delete(testsFolder, true);

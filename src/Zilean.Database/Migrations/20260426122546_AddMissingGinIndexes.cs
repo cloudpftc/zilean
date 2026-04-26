@@ -2,14 +2,19 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Zilean.Database.Migrations
-{
-    /// <inheritdoc />
-    public partial class AddMissingGinIndexes : Migration
+namespace Zilean.Database.Migrations;
+
+public partial class AddMissingGinIndexes : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Drop indexes if they exist (they may have been created by earlier migrations)
+            migrationBuilder.Sql("DROP INDEX IF EXISTS idx_cleaned_parsed_title_trgm");
+            migrationBuilder.Sql("DROP INDEX IF EXISTS idx_seasons_gin");
+            migrationBuilder.Sql("DROP INDEX IF EXISTS idx_episodes_gin");
+            migrationBuilder.Sql("DROP INDEX IF EXISTS idx_languages_gin");
+
             migrationBuilder.CreateIndex(
                 name: "idx_cleaned_parsed_title_trgm",
                 table: "Torrents",
@@ -60,4 +65,3 @@ namespace Zilean.Database.Migrations
                 table: "Torrents");
         }
     }
-}

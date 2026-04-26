@@ -66,6 +66,9 @@ services:
       - Zilean__Dmm__AnimeCompleteSeriesBoost=2.0
       - Zilean__Dmm__AnimeAudioPreference=any
 
+      # IMDb matching (re-enabled after fixing matching algorithm)
+      - Zilean__Imdb__EnableImportMatching=true
+
       # Refresh-on-miss (defaults: true, 5, 24h, 10)
       - Zilean__Refresh__EnableRefreshOnMiss=true
       - Zilean__Refresh__MaxMissCountBeforeRefresh=5
@@ -84,7 +87,7 @@ services:
       - Zilean__Persistence__MinPoolSize=5
       - Zilean__Persistence__BulkInsertBatchSize=1000
       - Zilean__Persistence__MaxMemoryMB=0
-      - Zilean__Persistence__MaxBatchSize=50000
+      - Zilean__Persistence__MaxBatchSize=1000
       - Zilean__Persistence__MinBatchSize=1000
 
       # Diagnostics
@@ -95,7 +98,6 @@ services:
       - Zilean__EnableDashboard=false
     volumes:
       - /mnt/nvme/comet/zilean/data:/app/data
-      - /mnt/nvme/comet/zilean/logs:/app/data/logs
     labels:
       - autoheal=true
     healthcheck:

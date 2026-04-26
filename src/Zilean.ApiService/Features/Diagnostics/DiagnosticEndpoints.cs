@@ -1,6 +1,9 @@
+using Dapper;
+using Npgsql;
 using Zilean.ApiService.Features.Ingestion;
 using Zilean.ApiService.Features.Search;
 using Zilean.Database;
+using Zilean.Shared.Features.Configuration;
 
 namespace Zilean.ApiService.Features.Diagnostics;
 
@@ -11,8 +14,7 @@ public static class DiagnosticEndpoints
     public static WebApplication MapDiagnosticEndpoints(this WebApplication app)
     {
         var group = app.MapGroup(GroupName)
-            .WithTags(GroupName)
-            .RequireAuthorization();
+            .WithTags(GroupName);
 
         group.MapGet("/freshness", GetFreshness);
         group.MapGet("/queue", GetQueue);
@@ -107,18 +109,20 @@ public static class DiagnosticEndpoints
         });
     }
 
-    private static async Task<IResult> GetStats(ZileanDbContext dbContext, CancellationToken ct)
+    private static async Task<IResult> GetStats(ZileanDbContext dbContext, ZileanConfiguration configuration, CancellationToken ct)
     {
-        var tableStats = await dbContext.Database
-            .SqlQuery<TableStatRaw>($"""
-                SELECT
-                    relname AS name,
-                    n_live_tup AS row_count,
-                    pg_total_relation_size(oid) AS size_bytes
-                FROM pg_stat_user_tables
-                ORDER BY pg_total_relation_size(oid) DESC
-                """)
-            .ToListAsync(ct);
+        await using var connection = new NpgsqlConnection(configuration.Database.ConnectionString);
+        await connection.OpenAsync(ct);
+
+        var tableStats = await connection.QueryAsync<TableStatRaw>("""
+            SELECT
+                s.relname AS "Name",
+                s.n_live_tup AS "RowCount",
+                pg_total_relation_size(c.oid) AS "SizeBytes"
+            FROM pg_stat_user_tables s
+            JOIN pg_class c ON c.relname = s.relname
+            ORDER BY pg_total_relation_size(c.oid) DESC
+            """);
 
         var tables = tableStats.Select(t => new
         {
@@ -128,9 +132,7 @@ public static class DiagnosticEndpoints
             sizeMb = Math.Round(t.SizeBytes / (1024.0 * 1024.0), 2)
         }).ToList();
 
-        var totalDatabaseSizeBytes = await dbContext.Database
-            .SqlQuery<long>($"SELECT pg_database_size(current_database())")
-            .FirstOrDefaultAsync(ct);
+        var totalDatabaseSizeBytes = await connection.QuerySingleOrDefaultAsync<long>("SELECT pg_database_size(current_database())");
 
         var lastIngestionTime = await dbContext.IngestionQueues
             .OrderByDescending(q => q.CreatedAt)
