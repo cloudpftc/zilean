@@ -229,6 +229,10 @@ public class TorrentInfoConfiguration : IEntityTypeConfiguration<TorrentInfo>
             .HasColumnType("boolean")
             .HasAnnotation("Relational:JsonPropertyName", "torrent");
 
+        builder.Property(t => t.Source)
+            .HasColumnType("text")
+            .HasAnnotation("Relational:JsonPropertyName", "source");
+
         builder.HasOne(t => t.Imdb)
             .WithMany()
             .HasForeignKey(t => t.ImdbId);
@@ -280,5 +284,9 @@ public class TorrentInfoConfiguration : IEntityTypeConfiguration<TorrentInfo>
 
         builder.HasIndex(t => t.InfoHash)
             .IsUnique();
+
+        builder.Property(t => t.Source)
+            .HasColumnType("text")
+            .HasAnnotation("Relational:JsonPropertyName", "source");
     }
 }

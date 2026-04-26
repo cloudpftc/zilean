@@ -29,7 +29,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<DmmSyncJob>();
         services.AddTransient<GenericSyncJob>();
         services.AddTransient<BackgroundRefreshJob>();
+        services.AddTransient<ProwlarrSyncJob>();
         services.AddSingleton<SyncOnDemandState>();
+        services.AddHttpClient("Prowlarr");
 
         return services;
     }
@@ -49,6 +51,13 @@ public static class ServiceCollectionExtensions
                 {
                     scheduler.Schedule<GenericSyncJob>()
                         .Cron(configuration.Ingestion.ScrapeSchedule)
+                        .PreventOverlapping("SyncJobs");
+                }
+
+                if (configuration.Prowlarr.Enabled)
+                {
+                    scheduler.Schedule<ProwlarrSyncJob>()
+                        .Cron(configuration.Prowlarr.Cron)
                         .PreventOverlapping("SyncJobs");
                 }
 

@@ -169,4 +169,7 @@ public class TorrentInfo
 
     [JsonPropertyName("refresh_pending")]
     public bool RefreshPending { get; set; } = false;
+
+    [JsonPropertyName("source")]
+    public string? Source { get; set; }
 }

@@ -29,6 +29,7 @@ public class ZileanDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ImportMetadataConfiguration());
         modelBuilder.ApplyConfiguration(new BlacklistedItemConfiguration());
         modelBuilder.ApplyConfiguration(new IngestionCheckpointConfiguration());
+        modelBuilder.ApplyConfiguration(new TorrentSourceStatsConfiguration());
         modelBuilder.ApplyConfiguration(new IngestionQueueConfiguration());
         modelBuilder.ApplyConfiguration(new QueryAuditConfiguration());
         modelBuilder.ApplyConfiguration(new FileAuditLogConfiguration());
@@ -43,4 +44,5 @@ public class ZileanDbContext : DbContext
     public DbSet<IngestionQueue> IngestionQueues => Set<IngestionQueue>();
     public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
     public DbSet<FileAuditLog> FileAuditLogs => Set<FileAuditLog>();
+    public DbSet<TorrentSourceStats> TorrentSourceStats => Set<TorrentSourceStats>();
 }

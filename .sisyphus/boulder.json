@@ -1,41 +1,23 @@
 {
-  "active_plan": "/home/pedro/projects/zilean/.sisyphus/plans/zilean-fix-all.md",
-  "started_at": "2026-04-26T12:22:12.027Z",
+  "active_plan": "/home/pedro/projects/zilean/.sisyphus/plans/phase2-multi-source-ingestion.md",
+  "started_at": "2026-04-26T19:16:42.181Z",
   "session_ids": [
-    "ses_236428375ffegkorh9DppcLEtQ"
+    "ses_234c70647ffeyNEk1nJcnrIn7f"
   ],
-  "session_origins": {
-    "ses_236428375ffegkorh9DppcLEtQ": "direct"
-  },
-  "plan_name": "zilean-fix-all",
+  "plan_name": "phase2-multi-source-ingestion",
   "agent": "atlas",
+  "session_origins": {
+    "ses_234c70647ffeyNEk1nJcnrIn7f": "direct"
+  },
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Fix `/diagnostics/stats` using raw Npgsql + Dapper",
-      "session_id": "ses_2363fda47ffeoNb9Dhje9FJ0DU",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-low",
-      "updated_at": "2026-04-26T12:33:30.923Z"
-    },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "Fix scraper ingestion root cause (based on Task 4 evidence)",
-      "session_id": "ses_2362d9c44ffe50qWrOhHOuElFc",
+      "task_title": "DB Migration — Add source column + stats table",
+      "session_id": "ses_234c2440affemtPh3Z4vA6iswO",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-26T12:50:35.129Z"
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "Run full test suite and fix failures",
-      "session_id": "ses_235fbacf7ffez910L6BtsNIXVC",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-26T13:40:26.415Z"
+      "updated_at": "2026-04-26T19:28:16.532Z"
     }
   }
 }
