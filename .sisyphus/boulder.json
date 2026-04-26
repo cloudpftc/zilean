@@ -18,6 +18,33 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-04-26T19:28:16.532Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "ProwlarrSyncJob — Unified Torznab adapter",
+      "session_id": "ses_234ae7583ffe3oz1MVgdedn2bV",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-26T19:46:58.922Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "Admin Endpoints — Source status and trigger",
+      "session_id": "ses_234a856ebffeOuIO4I9wilHiNd",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-26T19:52:42.526Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "ProwlarrSyncJobTests — xUnit test class",
+      "session_id": "ses_234528ba3ffe0hiwtM7y5pTO6V",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-26T21:27:28.678Z"
     }
   }
 }

@@ -114,6 +114,11 @@ public class ProwlarrSyncJob(
                 break;
             }
 
+            if (torrents.Count < PageSize)
+            {
+                logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: {Count} torrents (last page)", indexer.SourceName, page, torrents.Count);
+            }
+
             var allOlderOrEqual = torrents.All(t => t.IngestedAt <= lastSyncAt);
             if (allOlderOrEqual)
             {
@@ -193,11 +198,14 @@ public class ProwlarrSyncJob(
                     InfoHash = infoHash.ToLowerInvariant(),
                     RawTitle = title,
                     ParsedTitle = title,
+                    CleanedParsedTitle = title,
                     NormalizedTitle = title.ToLowerInvariant(),
+                    Resolution = string.Empty,
                     Size = size,
                     IngestedAt = ingestedAt,
                     Source = sourceName,
                     Torrent = true,
+                    Category = "other",
                 };
 
                 torrents.Add(torrent);
@@ -230,7 +238,7 @@ public class ProwlarrSyncJob(
             stats = new TorrentSourceStats
             {
                 Source = sourceName,
-                LastSyncAt = DateTime.MinValue,
+                LastSyncAt = DateTime.UnixEpoch,
                 TorrentCount = 0,
             };
             dbContext.TorrentSourceStats.Add(stats);

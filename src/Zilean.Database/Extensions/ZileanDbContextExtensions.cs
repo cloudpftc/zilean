@@ -16,13 +16,12 @@ public static class ZileanDbContextExtensions
         ["dmm"] = 1,
     };
 
-    private static readonly string _upsertSql = BuildUpsertSql();
-
     private sealed record ColumnDef(string JsonKey, string DbColumn, string PgType);
 
     private static readonly ColumnDef[] _columnDefinitions =
     [
         new("info_hash", "InfoHash", "text"),
+        new("category", "Category", "text"),
         new("raw_title", "RawTitle", "text"),
         new("parsed_title", "ParsedTitle", "text"),
         new("normalized_title", "NormalizedTitle", "text"),
@@ -77,6 +76,8 @@ public static class ZileanDbContextExtensions
         new("source", "Source", "text"),
     ];
 
+    private static readonly string _upsertSql = BuildUpsertSql();
+
     public static async Task UpsertTorrentsAsync(
         this ZileanDbContext db,
         IEnumerable<TorrentInfo> torrents,
@@ -113,8 +114,8 @@ public static class ZileanDbContextExtensions
     private static string BuildUpsertSql()
     {
         var insertColumns = string.Join(", ", _columnDefinitions.Select(c => $@"""{c.DbColumn}"""));
-        var jsonColumns = string.Join(", ", _columnDefinitions.Select(c => $"{c.JsonKey} {c.PgType}"));
-        var selectColumns = string.Join(", ", _columnDefinitions.Select(c => $"x.{c.JsonKey} AS \"{c.DbColumn}\""));
+        var jsonColumns = string.Join(", ", _columnDefinitions.Select(c => $@"""{c.JsonKey}"" {c.PgType}"));
+        var selectColumns = string.Join(", ", _columnDefinitions.Select(c => $@"x.""{c.JsonKey}"" AS ""{c.DbColumn}"""));
         var updateSetColumns = string.Join(", ", _columnDefinitions
             .Where(c => c.DbColumn != "InfoHash")
             .Select(c => $@"""{c.DbColumn}"" = EXCLUDED.""{c.DbColumn}"""));

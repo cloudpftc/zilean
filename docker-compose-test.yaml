@@ -47,7 +47,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1g
           cpus: "1"
     environment:
       # Required - used by DatabaseConfiguration to build connection string
@@ -96,6 +96,28 @@ services:
 
       # Disable dashboard to save memory
       - Zilean__EnableDashboard=false
+
+      # Prowlarr indexer scraping (enabled, 6-hour schedule, 4 indexers)
+      - Zilean__Prowlarr__Enabled=true
+      - Zilean__Prowlarr__BaseUrl=https://prowlarr.cloudpftc.com
+      - Zilean__Prowlarr__ApiKey=
+      - Zilean__Prowlarr__Cron=0 */6 * * *
+      - Zilean__Prowlarr__Indexers__0__IndexerId=5
+      - Zilean__Prowlarr__Indexers__0__SourceName=nyaa
+      - Zilean__Prowlarr__Indexers__0__Enabled=true
+      - Zilean__Prowlarr__Indexers__0__Categories=2000,5000
+      - Zilean__Prowlarr__Indexers__1__IndexerId=2
+      - Zilean__Prowlarr__Indexers__1__SourceName=tpb
+      - Zilean__Prowlarr__Indexers__1__Enabled=true
+      - Zilean__Prowlarr__Indexers__1__Categories=2000,5000
+      - Zilean__Prowlarr__Indexers__2__IndexerId=4
+      - Zilean__Prowlarr__Indexers__2__SourceName=limetorrents
+      - Zilean__Prowlarr__Indexers__2__Enabled=true
+      - Zilean__Prowlarr__Indexers__2__Categories=2000,5000
+      - Zilean__Prowlarr__Indexers__3__IndexerId=6
+      - Zilean__Prowlarr__Indexers__3__SourceName=subsplease
+      - Zilean__Prowlarr__Indexers__3__Enabled=true
+      - Zilean__Prowlarr__Indexers__3__Categories=5070,2000
     volumes:
       - /mnt/nvme/comet/zilean/data:/app/data
     labels:

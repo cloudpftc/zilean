@@ -379,7 +379,7 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
   **Commit**: YES (with Task 2)
   - Message: `feat(db): add upsert helper with source priority logic`
 
-- [ ] 4. ProwlarrSyncJob — Unified Torznab adapter
+- [x] 4. ProwlarrSyncJob — Unified Torznab adapter
 
   **What to do**:
   - Create `src/Zilean.ApiService/Features/Sync/ProwlarrSyncJob.cs`
@@ -482,7 +482,7 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
   - Message: `feat(ingestion): add unified Prowlarr Torznab sync job`
   - Files: `src/Zilean.ApiService/Features/Sync/ProwlarrSyncJob.cs`
 
-- [ ] 5. DI Registration + Scheduling
+- [x] 5. DI Registration + Scheduling
 
   **What to do**:
   - In `src/Zilean.ApiService/Features/Bootstrapping/ServiceCollectionExtensions.cs`:
@@ -502,7 +502,7 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
   **QA Scenarios**: Verify DI resolves job, scheduler fires. Evidence: `task-5-di-schedule.txt`
   **Commit**: YES (with Tasks 6, 7)
 
-- [ ] 6. Admin Endpoints — Source status and trigger
+- [x] 6. Admin Endpoints — Source status and trigger
 
   **What to do**:
   - Create `src/Zilean.ApiService/Endpoints/AdminEndpoints.cs`
@@ -528,7 +528,7 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
   **QA Scenarios**: curl admin endpoints. Evidence: `task-6-admin.json`
   **Commit**: YES (with Tasks 5, 7)
 
-- [ ] 7. Docker Updates — Memory + Prowlarr env vars
+- [x] 7. Docker Updates — Memory + Prowlarr env vars
 
   **What to do**:
   - `docker-compose.yaml`: `mem_limit: 1g` on zilean service, Prowlarr env vars:
@@ -560,7 +560,7 @@ Max Concurrent: 3 (Wave 1 and Wave 3)
   **QA Scenarios**: `docker compose config | grep mem_limit` and `docker compose config | grep Zilean__Prowlarr`. Evidence: `task-7-docker.txt`
   **Commit**: YES
 
-- [ ] 8. ProwlarrSyncJobTests — xUnit test class
+- [x] 8. ProwlarrSyncJobTests — xUnit test class
 
   **What to do**:
   - Create `tests/Zilean.Tests/Features/Sync/ProwlarrSyncJobTests.cs`

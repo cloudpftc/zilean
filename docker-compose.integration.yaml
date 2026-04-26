@@ -1,0 +1,14 @@
+# Integration test PostgreSQL
+# Start before running tests: docker compose -f docker-compose.integration.yaml up -d
+# Stop after: docker compose -f docker-compose.integration.yaml down
+
+services:
+  postgres-test:
+    image: postgres:17-alpine
+    container_name: zilean-db-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "15432:5432"

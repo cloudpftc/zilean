@@ -3,7 +3,6 @@ global using FluentAssertions;
 global using Microsoft.Extensions.Configuration;
 global using Microsoft.Extensions.Logging;
 global using NSubstitute;
-global using Testcontainers.PostgreSql;
 global using Xunit.Abstractions;
 global using Zilean.Scraper.Features.Imdb;
 global using Zilean.Shared.Features.Configuration;
