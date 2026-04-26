@@ -2,6 +2,10 @@
 
 builder.Configuration.AddConfigurationFiles();
 
+// Ensure logs directory exists for Serilog file sink
+var logsDir = Path.Combine(AppContext.BaseDirectory, "data", "logs");
+Directory.CreateDirectory(logsDir);
+
 var zileanConfiguration = builder.Configuration.GetZileanConfiguration();
 
 builder.AddOtlpServiceDefaults();

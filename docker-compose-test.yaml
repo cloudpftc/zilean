@@ -39,8 +39,11 @@ services:
   zilean:
     build:
       context: /home/pedro/projects/zilean
-      dockerfile: Dockerfile.runtime
+      dockerfile: Dockerfile
     container_name: zilean
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     deploy:
       resources:
         limits:
@@ -86,11 +89,13 @@ services:
 
       # Diagnostics
       - Zilean__Diagnostics__EnableEndpoint=true
+      - Zilean__ApiKey=test-api-key-123
 
       # Disable dashboard to save memory
       - Zilean__EnableDashboard=false
     volumes:
       - /mnt/nvme/comet/zilean/data:/app/data
+      - /mnt/nvme/comet/zilean/logs:/app/data/logs
     labels:
       - autoheal=true
     healthcheck:

@@ -9,16 +9,31 @@ public static class LoggingConfiguration
         {
           "Serilog": {
             "MinimumLevel": {
-              "Default": "Information",
+              "Default": "Debug",
               "Override": {
-                "Microsoft": "Warning",
+                "Microsoft": "Information",
                 "System": "Warning",
-                "System.Net.Http.HttpClient.Scraper.LogicalHandler": "Warning",
-                "System.Net.Http.HttpClient.Scraper.ClientHandler": "Warning",
+                "System.Net.Http.HttpClient.Scraper.LogicalHandler": "Information",
+                "System.Net.Http.HttpClient.Scraper.ClientHandler": "Information",
                 "Microsoft.AspNetCore.Hosting.Diagnostics": "Error",
                 "Microsoft.AspNetCore.DataProtection": "Error",
+                "Microsoft.EntityFrameworkCore.Database.Command": "Information",
+                "Coravel": "Information"
               }
-            }
+            },
+            "WriteTo": [
+              {
+                "Name": "File",
+                "Args": {
+                  "path": "/app/data/logs/zilean-.log",
+                  "rollingInterval": "Day",
+                  "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                  "rollOnFileSizeLimit": true,
+                  "fileSizeLimitBytes": 104857600,
+                  "retainedFileCountLimit": 14
+                }
+              }
+            ]
           }
         }
         """;
