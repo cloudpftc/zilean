@@ -117,8 +117,12 @@ public class ProwlarrSyncJob(
             using var doc = JsonDocument.Parse(json);
             foreach (var item in doc.RootElement.EnumerateArray())
             {
-                var infoHash = item.GetProperty("infoHash").GetString();
-                var title = item.GetProperty("title").GetString();
+                if (!item.TryGetProperty("infoHash", out var ih) ||
+                    !item.TryGetProperty("title", out var tl))
+                    continue;
+
+                var infoHash = ih.GetString();
+                var title = tl.GetString();
                 var size = item.TryGetProperty("size", out var sz) ? sz.GetInt64().ToString() : null;
                 var pubDateStr = item.TryGetProperty("publishDate", out var pd) ? pd.GetString() : null;
 
@@ -437,17 +441,31 @@ public class ProwlarrSyncJob(
             if (CancellationToken.IsCancellationRequested) break;
 
             // Prefer original title (e.g. "Shingeki no Kyojin") over English title (e.g. "Attack on Titan")
-            var title = !string.IsNullOrWhiteSpace(imdbEntry.OriginalTitle) &&
-                        imdbEntry.OriginalTitle != imdbEntry.Title
-                ? imdbEntry.OriginalTitle
-                : imdbEntry.Title;
-            if (string.IsNullOrWhiteSpace(title)) continue;
+            var titlesToTry = new List<string>();
+            if (!string.IsNullOrWhiteSpace(imdbEntry.OriginalTitle) &&
+                imdbEntry.OriginalTitle != imdbEntry.Title)
+            {
+                titlesToTry.Add(imdbEntry.OriginalTitle);
+                titlesToTry.Add(imdbEntry.Title);
+            }
+            else if (!string.IsNullOrWhiteSpace(imdbEntry.Title))
+            {
+                titlesToTry.Add(imdbEntry.Title);
+            }
+            if (titlesToTry.Count == 0) continue;
 
+            foreach (var title in titlesToTry)
+            {
             // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)
+            // Use similarity > 0.5 (higher than default 0.3) to avoid false positives
             var existsInDb = await dbContext.Torrents
-                .AnyAsync(t => t.CleanedParsedTitle != null &&
-                               EF.Functions.TrigramsAreSimilar(t.CleanedParsedTitle!, title),
-                    CancellationToken);
+                .FromSqlRaw("""
+                    SELECT * FROM "Torrents"
+                    WHERE "CleanedParsedTitle" IS NOT NULL
+                    AND similarity("CleanedParsedTitle", {0}) > 0.5
+                    LIMIT 1
+                    """, title)
+                .AnyAsync(CancellationToken);
 
             if (existsInDb)
             {
@@ -460,55 +478,50 @@ public class ProwlarrSyncJob(
                 continue;
             }
 
-            // Query indexers in priority order: TPB first, then nyaa, then limetorrents
-            var found = false;
-            foreach (var indexer in indexerPriority)
+            // Global search across ALL Prowlarr indexers (no per-indexer restriction)
+            var foundTorrents = 0;
+            try
             {
-                try
+                var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
+                    + $"?query={Uri.EscapeDataString(title)}"
+                    + $"&type=search"
+                    + $"&limit={PageSize}"
+                    + $"&offset=0";
+
+                var response = await pipeline.ExecuteAsync(
+                    async ct => await client.GetAsync(url, ct),
+                    CancellationToken);
+
+                totalQueried++;
+
+                if (response.IsSuccessStatusCode)
                 {
-                    var url = BuildNativeSearchUrl(indexer, title, 0);
-
-                    var response = await pipeline.ExecuteAsync(
-                        async ct => await client.GetAsync(url, ct),
-                        CancellationToken);
-
-                    if (!response.IsSuccessStatusCode) continue;
-
                     var content = await response.Content.ReadAsStringAsync(CancellationToken);
-                    var torrents = ParseNativeResponse(content, indexer.SourceName);
-
-                    totalQueried++;
+                    var torrents = ParseNativeResponse(content, "prowlarr");
 
                     if (torrents.Count > 0)
                     {
-                        await dbContext.UpsertTorrentsAsync(torrents, indexer.SourceName, CancellationToken);
+                        await dbContext.UpsertTorrentsAsync(torrents, "prowlarr", CancellationToken);
                         totalProcessed += torrents.Count;
-                        found = true;
+                        foundTorrents = torrents.Count;
 
-                        logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Source}: {Count} torrents",
-                            title, imdbEntry.Category, imdbEntry.Year, indexer.SourceName, torrents.Count);
-
-                        break; // Found on this indexer, skip lower-priority ones
+                        logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Count} torrents",
+                            title, imdbEntry.Category, imdbEntry.Year, torrents.Count);
+                    }
+                    else if (totalQueried % 50 == 0)
+                    {
+                        logger.LogDebug("[ImdbBackfill] Not found: '{Title}' ({Category}, {Year})",
+                            title, imdbEntry.Category, imdbEntry.Year);
                     }
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[ImdbBackfill] Failed to query {Source} for '{Title}'",
-                        indexer.SourceName, title);
-                }
-
-                await Task.Delay(2000, CancellationToken); // Respect rate limits between queries
             }
-
-            if (!found)
+            catch (Exception ex)
             {
-                // Log only every 50th miss to avoid spam
-                if (totalQueried % 50 == 0)
-                {
-                    logger.LogDebug("[ImdbBackfill] Not found: '{Title}' ({Category}, {Year})",
-                        title, imdbEntry.Category, imdbEntry.Year);
-                }
+                logger.LogWarning(ex, "[ImdbBackfill] Failed to query for '{Title}'", title);
             }
+
+            if (foundTorrents > 0) break;
+        }
 
             // 5s between titles to avoid rate limiting
             await Task.Delay(5000, CancellationToken);
