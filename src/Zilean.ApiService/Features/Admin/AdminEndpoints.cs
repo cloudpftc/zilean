@@ -20,6 +20,7 @@ public static class AdminEndpoints
         group.MapGet("/sources/status", GetSourcesStatus);
         group.MapPost("/sources/trigger/{sourceName}", TriggerSourceSync);
         group.MapPost("/sources/backfill/{sourceName}", BackfillSource);
+        group.MapPost("/sources/backfill-all", BackfillAllSources);
 
         return app;
     }
@@ -86,10 +87,11 @@ public static class AdminEndpoints
         }
     }
 
-    private static async Task<IResult> BackfillSource(
+    private static IResult BackfillSource(
         string sourceName,
         [FromQuery] string untilDate,
-        ProwlarrSyncJob syncJob)
+        ProwlarrSyncJob syncJob,
+        ILogger<ProwlarrSyncJob> logger)
     {
         if (string.IsNullOrWhiteSpace(untilDate))
         {
@@ -105,9 +107,81 @@ public static class AdminEndpoints
             ? DateTime.SpecifyKind(date, DateTimeKind.Utc)
             : date.ToUniversalTime();
 
-        var count = await syncJob.BackfillIndexerAsync(sourceName, utcDate);
+        // Fire-and-forget: start backfill in background and return immediately
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await syncJob.BackfillIndexerAsync(sourceName, utcDate);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[ProwlarrBackfill] Background backfill failed for '{SourceName}'", sourceName);
+            }
+        });
 
-        return TypedResults.Ok(new { sourceName, untilDate, torrentsProcessed = count });
+        return TypedResults.Ok(new
+        {
+            sourceName,
+            untilDate,
+            message = "Backfill started in background",
+            status = "running",
+        });
+    }
+
+    private static IResult BackfillAllSources(
+        [FromQuery] string untilDate,
+        ProwlarrSyncJob syncJob,
+        ZileanConfiguration configuration,
+        ILogger<ProwlarrSyncJob> logger)
+    {
+        if (string.IsNullOrWhiteSpace(untilDate))
+        {
+            return TypedResults.BadRequest("untilDate is required. Use YYYY-MM-DD format.");
+        }
+
+        if (!DateTime.TryParse(untilDate, out var date))
+        {
+            return TypedResults.BadRequest("Invalid date format. Use YYYY-MM-DD.");
+        }
+
+        var utcDate = date.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(date, DateTimeKind.Utc)
+            : date.ToUniversalTime();
+
+        var enabledIndexers = configuration.Prowlarr.Indexers
+            .Where(i => i.Enabled && !string.IsNullOrWhiteSpace(i.SourceName))
+            .ToList();
+
+        if (enabledIndexers.Count == 0)
+        {
+            return TypedResults.BadRequest("No enabled Prowlarr indexers found.");
+        }
+
+        // Fire-and-forget: start backfill for all sources in background and return immediately
+        _ = Task.Run(async () =>
+        {
+            foreach (var indexer in enabledIndexers)
+            {
+                try
+                {
+                    logger.LogInformation("[ProwlarrBackfill] Starting background backfill for '{SourceName}'", indexer.SourceName);
+                    await syncJob.BackfillIndexerAsync(indexer.SourceName, utcDate);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[ProwlarrBackfill] Background backfill failed for '{SourceName}'", indexer.SourceName);
+                }
+            }
+        });
+
+        return TypedResults.Ok(new
+        {
+            sources = enabledIndexers.Select(i => i.SourceName).ToList(),
+            untilDate,
+            message = "Backfill started for all sources in background",
+            status = "running",
+        });
     }
 }
 

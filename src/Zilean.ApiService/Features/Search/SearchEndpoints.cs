@@ -43,12 +43,12 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static async Task PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache)
+    private static IResult PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache)
     {
         if (state.IsRunning)
         {
             logger.LogWarning("On-demand scrape already running.");
-            return;
+            return TypedResults.Ok(new { message = "On-demand scrape already running", status = "already_running" });
         }
 
         logger.LogInformation("Trying to schedule on-demand scrape with a 1 minute timeout on lock acquisition.");
@@ -57,22 +57,31 @@ public static class SearchEndpoints
 
         if(available)
         {
-            try
+            // Fire-and-forget: start scrape in background and return immediately
+            _ = Task.Run(async () =>
             {
-                logger.LogInformation("On-demand scrape mutex lock acquired.");
-                state.IsRunning = true;
-                await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService, queryCache).Invoke();
-            }
-            finally
-            {
-                mutex.Release(nameof(DmmSyncJob));
-                state.IsRunning = false;
-            }
+                try
+                {
+                    logger.LogInformation("On-demand scrape mutex lock acquired.");
+                    state.IsRunning = true;
+                    await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService, queryCache).Invoke();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "On-demand scrape failed.");
+                }
+                finally
+                {
+                    mutex.Release(nameof(DmmSyncJob));
+                    state.IsRunning = false;
+                }
+            });
 
-            return;
+            return TypedResults.Ok(new { message = "On-demand scrape started", status = "running" });
         }
 
         logger.LogWarning("Failed to acquire lock for on-demand scrape.");
+        return TypedResults.Ok(new { message = "Failed to acquire lock for on-demand scrape", status = "locked" });
     }
 
     private static async Task<Ok<TorrentInfo[]>> PerformSearch(HttpContext context, ITorrentInfoService torrentInfoService, ZileanConfiguration configuration, ILogger<DmmUnfilteredInstance> logger, IQueryAuditService auditService, ZileanDbContext dbContext, IQueryCacheService queryCache, [FromBody] DmmQueryRequest queryRequest)
