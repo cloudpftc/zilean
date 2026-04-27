@@ -477,13 +477,17 @@ public class ProwlarrSyncJob(
                 continue;
             }
 
-            // For TV shows, search per-season for complete coverage
+            // For TV shows, search per-season/episode for complete coverage
             var searchQueries = new List<string> { baseTitle };
-            if (imdbEntry.Category == "tvSeries" || imdbEntry.Category == "tvSeries")
+            if (imdbEntry.Category == "tvSeries")
             {
-                // Add season-specific queries: "Show S01", "Show S02", etc.
-                for (var s = 1; s <= 30; s++)
-                    searchQueries.Add($"{baseTitle} S{s:D2}");
+                var seasonCount = await GetSeasonCountAsync(imdbEntry.ImdbId, client, pipeline);
+                for (var s = 1; s <= seasonCount && searchQueries.Count < 200; s++)
+                {
+                    var episodeCount = await GetEpisodeCountAsync(imdbEntry.ImdbId, s, client, pipeline);
+                    for (var e = 1; e <= episodeCount; e++)
+                        searchQueries.Add($"{baseTitle} S{s:D2}E{e:D2}");
+                }
             }
 
             // Paginate through results for this title
@@ -564,5 +568,43 @@ public class ProwlarrSyncJob(
             totalProcessed, totalQueried, totalSkipped);
 
         return totalProcessed;
+    }
+
+    private async Task<int> GetSeasonCountAsync(string imdbId, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
+    {
+        try
+        {
+            var url = $"https://api.imdbapi.dev/titles/{imdbId}/seasons";
+            var response = await pipeline.ExecuteAsync(async ct => await client.GetAsync(url, ct), CancellationToken);
+            if (!response.IsSuccessStatusCode) return 1;
+            var json = await response.Content.ReadAsStringAsync(CancellationToken);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("seasons", out var seasons))
+                return Math.Max(1, seasons.GetArrayLength());
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[ImdbBackfill] Failed to get seasons for {ImdbId}", imdbId);
+        }
+        return 1;
+    }
+
+    private async Task<int> GetEpisodeCountAsync(string imdbId, int season, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
+    {
+        try
+        {
+            var url = $"https://api.imdbapi.dev/titles/{imdbId}/episodes?season={season}";
+            var response = await pipeline.ExecuteAsync(async ct => await client.GetAsync(url, ct), CancellationToken);
+            if (!response.IsSuccessStatusCode) return 1;
+            var json = await response.Content.ReadAsStringAsync(CancellationToken);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("episodes", out var episodes))
+                return Math.Max(1, episodes.GetArrayLength());
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[ImdbBackfill] Failed to get episodes for {ImdbId} S{Season}", imdbId, season);
+        }
+        return 1;
     }
 }
