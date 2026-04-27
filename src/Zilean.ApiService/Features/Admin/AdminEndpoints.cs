@@ -90,8 +90,7 @@ public static class AdminEndpoints
     private static IResult BackfillSource(
         string sourceName,
         [FromQuery] string untilDate,
-        ProwlarrSyncJob syncJob,
-        ILogger<ProwlarrSyncJob> logger)
+        IServiceScopeFactory scopeFactory)
     {
         if (string.IsNullOrWhiteSpace(untilDate))
         {
@@ -110,6 +109,10 @@ public static class AdminEndpoints
         // Fire-and-forget: start backfill in background and return immediately
         _ = Task.Run(async () =>
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var syncJob = scope.ServiceProvider.GetRequiredService<ProwlarrSyncJob>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<ProwlarrSyncJob>>();
+
             try
             {
                 await syncJob.BackfillIndexerAsync(sourceName, utcDate);
@@ -131,9 +134,8 @@ public static class AdminEndpoints
 
     private static IResult BackfillAllSources(
         [FromQuery] string untilDate,
-        ProwlarrSyncJob syncJob,
         ZileanConfiguration configuration,
-        ILogger<ProwlarrSyncJob> logger)
+        IServiceScopeFactory scopeFactory)
     {
         if (string.IsNullOrWhiteSpace(untilDate))
         {
@@ -161,6 +163,10 @@ public static class AdminEndpoints
         // Fire-and-forget: start backfill for all sources in background and return immediately
         _ = Task.Run(async () =>
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var syncJob = scope.ServiceProvider.GetRequiredService<ProwlarrSyncJob>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<ProwlarrSyncJob>>();
+
             foreach (var indexer in enabledIndexers)
             {
                 try
