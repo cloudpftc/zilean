@@ -21,6 +21,7 @@ public static class AdminEndpoints
         group.MapPost("/sources/trigger/{sourceName}", TriggerSourceSync);
         group.MapPost("/sources/backfill/{sourceName}", BackfillSource);
         group.MapPost("/sources/backfill-all", BackfillAllSources);
+        group.MapPost("/sources/backfill-imdb", BackfillImdb);
 
         return app;
     }
@@ -186,6 +187,32 @@ public static class AdminEndpoints
             sources = enabledIndexers.Select(i => i.SourceName).ToList(),
             untilDate,
             message = "Backfill started for all sources in background",
+            status = "running",
+        });
+    }
+
+    private static IResult BackfillImdb(IServiceScopeFactory scopeFactory)
+    {
+        _ = Task.Run(async () =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var syncJob = scope.ServiceProvider.GetRequiredService<ProwlarrSyncJob>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<ProwlarrSyncJob>>();
+
+            try
+            {
+                var count = await syncJob.BackfillFromImdbTitlesAsync();
+                logger.LogInformation("[ImdbBackfill] Completed: {Count} torrents ingested", count);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[ImdbBackfill] Background IMDb backfill failed");
+            }
+        });
+
+        return TypedResults.Ok(new
+        {
+            message = "IMDb-driven backfill started in background",
             status = "running",
         });
     }

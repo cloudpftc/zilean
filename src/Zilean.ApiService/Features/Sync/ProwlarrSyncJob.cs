@@ -421,4 +421,127 @@ public class ProwlarrSyncJob(
 
         return count;
     }
+
+    public async Task<int> BackfillFromImdbTitlesAsync()
+    {
+        var totalProcessed = 0;
+        var totalQueried = 0;
+        var totalSkipped = 0;
+
+        var indexerPriority = configuration.Prowlarr.Indexers
+            .Where(i => i.Enabled && !string.IsNullOrWhiteSpace(i.SourceName))
+            .ToList();
+
+        if (indexerPriority.Count == 0)
+        {
+            logger.LogWarning("[ImdbBackfill] No enabled Prowlarr indexers, skipping");
+            return 0;
+        }
+
+        logger.LogInformation("[ImdbBackfill] Starting IMDb-driven backfill with {Count} indexers",
+            indexerPriority.Count);
+
+        var client = GetProwlarrClient();
+        var pipeline = GetProwlarrPipeline();
+
+        var titles = await dbContext.ImdbFiles
+            .Where(i => i.Category == "movie" || i.Category == "tvSeries")
+            .OrderBy(i => i.Year)
+            .Select(i => new { i.Title, i.Category, i.ImdbId, i.Year })
+            .ToListAsync(CancellationToken);
+
+        logger.LogInformation("[ImdbBackfill] Loaded {Count} IMDb titles to check", titles.Count);
+
+        foreach (var imdbEntry in titles)
+        {
+            if (CancellationToken.IsCancellationRequested) break;
+
+            var title = imdbEntry.Title;
+            if (string.IsNullOrWhiteSpace(title)) continue;
+
+            // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)
+            var existsInDb = await dbContext.Torrents
+                .AnyAsync(t => t.CleanedParsedTitle != null &&
+                               EF.Functions.TrigramsAreSimilar(t.CleanedParsedTitle!, title),
+                    CancellationToken);
+
+            if (existsInDb)
+            {
+                totalSkipped++;
+                if (totalSkipped % 100 == 0)
+                {
+                    logger.LogInformation("[ImdbBackfill] Skipped {Skipped} existing, queried {Queried}, found {Found} torrents",
+                        totalSkipped, totalQueried, totalProcessed);
+                }
+                continue;
+            }
+
+            // Query indexers in priority order: TPB first, then nyaa, then limetorrents
+            var found = false;
+            foreach (var indexer in indexerPriority)
+            {
+                try
+                {
+                    var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/{indexer.IndexerId}/api"
+                        + $"?t=search&apikey={configuration.Prowlarr.ApiKey}"
+                        + $"&cat={indexer.Categories}&extended=1"
+                        + $"&q={Uri.EscapeDataString(title)}";
+
+                    var response = await pipeline.ExecuteAsync(
+                        async ct => await client.GetAsync(url, ct),
+                        CancellationToken);
+
+                    if (!response.IsSuccessStatusCode) continue;
+
+                    var content = await response.Content.ReadAsStringAsync(CancellationToken);
+                    var torrents = ParseRssFeed(content, indexer.SourceName, DateTime.UnixEpoch);
+
+                    totalQueried++;
+
+                    if (torrents.Count > 0)
+                    {
+                        await dbContext.UpsertTorrentsAsync(torrents, indexer.SourceName, CancellationToken);
+                        totalProcessed += torrents.Count;
+                        found = true;
+
+                        logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Source}: {Count} torrents",
+                            title, imdbEntry.Category, imdbEntry.Year, indexer.SourceName, torrents.Count);
+
+                        break; // Found on this indexer, skip lower-priority ones
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[ImdbBackfill] Failed to query {Source} for '{Title}'",
+                        indexer.SourceName, title);
+                }
+
+                await Task.Delay(2000, CancellationToken); // Respect rate limits between queries
+            }
+
+            if (!found)
+            {
+                // Log only every 50th miss to avoid spam
+                if (totalQueried % 50 == 0)
+                {
+                    logger.LogDebug("[ImdbBackfill] Not found: '{Title}' ({Category}, {Year})",
+                        title, imdbEntry.Category, imdbEntry.Year);
+                }
+            }
+
+            // 5s between titles to avoid rate limiting
+            await Task.Delay(5000, CancellationToken);
+
+            if (totalQueried % 100 == 0)
+            {
+                logger.LogInformation("[ImdbBackfill] Progress: {Queried} queried, {Found} torrents, {Skipped} skipped",
+                    totalQueried, totalProcessed, totalSkipped);
+            }
+        }
+
+        logger.LogInformation("[ImdbBackfill] Complete: {Total} torrents from {Queried} queries ({Skipped} existing titles skipped)",
+            totalProcessed, totalQueried, totalSkipped);
+
+        return totalProcessed;
+    }
 }
