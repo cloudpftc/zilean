@@ -427,7 +427,7 @@ public class ProwlarrSyncJob(
         var titles = await dbContext.ImdbFiles
             .Where(i => i.Category == "movie" || i.Category == "tvSeries")
             .OrderBy(i => i.Year)
-            .Select(i => new { i.Title, i.Category, i.ImdbId, i.Year })
+            .Select(i => new { i.Title, i.OriginalTitle, i.Category, i.ImdbId, i.Year })
             .ToListAsync(CancellationToken);
 
         logger.LogInformation("[ImdbBackfill] Loaded {Count} IMDb titles to check", titles.Count);
@@ -436,7 +436,11 @@ public class ProwlarrSyncJob(
         {
             if (CancellationToken.IsCancellationRequested) break;
 
-            var title = imdbEntry.Title;
+            // Prefer original title (e.g. "Shingeki no Kyojin") over English title (e.g. "Attack on Titan")
+            var title = !string.IsNullOrWhiteSpace(imdbEntry.OriginalTitle) &&
+                        imdbEntry.OriginalTitle != imdbEntry.Title
+                ? imdbEntry.OriginalTitle
+                : imdbEntry.Title;
             if (string.IsNullOrWhiteSpace(title)) continue;
 
             // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)

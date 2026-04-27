@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
 namespace Zilean.Database;
 
 public class ZileanDbContext : DbContext
@@ -16,6 +18,8 @@ public class ZileanDbContext : DbContext
         {
             optionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=zilean;Username=postgres;Password=postgres;CommandTimeout=0;Include Error Detail=true;");
         }
+
+        optionsBuilder.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
         base.OnConfiguring(optionsBuilder);
     }
 

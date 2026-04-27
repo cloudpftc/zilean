@@ -1,59 +1,32 @@
 {
-  "active_plan": "/home/pedro/projects/zilean/.sisyphus/plans/phase2-multi-source-ingestion.md",
-  "started_at": "2026-04-26T19:16:42.181Z",
+  "active_plan": "/home/pedro/projects/zilean/.sisyphus/plans/phase2-backfill.md",
+  "started_at": "2026-04-27T07:59:36.555Z",
   "session_ids": [
-    "ses_234c70647ffeyNEk1nJcnrIn7f"
+    "ses_2320c9037ffec4eizV9TUpBlhB"
   ],
-  "plan_name": "phase2-multi-source-ingestion",
+  "plan_name": "phase2-backfill",
   "agent": "atlas",
   "session_origins": {
-    "ses_234c70647ffeyNEk1nJcnrIn7f": "direct"
+    "ses_2320c9037ffec4eizV9TUpBlhB": "direct"
   },
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "DB Migration — Add source column + stats table",
-      "session_id": "ses_234c2440affemtPh3Z4vA6iswO",
+      "task_title": "Admin endpoint — POST /admin/sources/backfill/{sourceName}",
+      "session_id": "ses_2320addd3ffeLwmD3dWYDq77Yt",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-26T19:28:16.532Z"
+      "updated_at": "2026-04-27T08:02:36.348Z"
     },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "ProwlarrSyncJob — Unified Torznab adapter",
-      "session_id": "ses_234ae7583ffe3oz1MVgdedn2bV",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-26T19:46:58.922Z"
-    },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "Admin Endpoints — Source status and trigger",
-      "session_id": "ses_234a856ebffeOuIO4I9wilHiNd",
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "BackfillIndexerAsync — keyword scraping to bypass RSS limit",
+      "session_id": "ses_2320804deffec43SC08Fk6UuVy",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-26T19:52:42.526Z"
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "ProwlarrSyncJobTests — xUnit test class",
-      "session_id": "ses_234528ba3ffe0hiwtM7y5pTO6V",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-26T21:27:28.678Z"
-    },
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** — `oracle`: Verify ProwlarrSyncJob built, config binds, endpoints respond, docker memory 1G, no broken DMM endpoints. VERDICT.",
-      "session_id": "ses_2344cc7e2ffeL7FL04In7sJ8Ut",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-26T21:32:38.091Z"
+      "updated_at": "2026-04-27T08:06:09.055Z"
     }
   }
 }

@@ -50,6 +50,7 @@ public class ImdbFileProcessor(ILogger<ImdbFileProcessor> logger, IImdbFileServi
                 ImdbId = csv.GetField(0),
                 Category = csv.GetField(1),
                 Title = csv.GetField(2),
+                OriginalTitle = csv.GetField(3),
                 Adult = isAdultSet && adult == 1,
                 Year = isYearValid ? year : 0
             };
