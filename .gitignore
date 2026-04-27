@@ -16,3 +16,7 @@ Zilean.sln.DotSettings.user
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+publish/
+tests/Zilean.Tests/TestResults/
+.beads/

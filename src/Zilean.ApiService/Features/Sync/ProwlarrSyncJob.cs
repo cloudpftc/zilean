@@ -1,5 +1,5 @@
+using System.Text.Json;
 using System.Threading.RateLimiting;
-using System.Xml.Linq;
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
@@ -94,7 +94,82 @@ public class ProwlarrSyncJob(
         if (_prowlarrClient is not null) return _prowlarrClient;
         var client = new HttpClient(_prowlarrHandler) { Timeout = TimeSpan.FromMinutes(5) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Zilean/2.0");
+        client.DefaultRequestHeaders.Add("X-Api-Key", configuration.Prowlarr.ApiKey);
         return _prowlarrClient = client;
+    }
+
+    private string BuildNativeSearchUrl(ProwlarrIndexer indexer, string query, int offset)
+    {
+        return $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
+            + $"?query={Uri.EscapeDataString(query)}"
+            + $"&indexerIds={indexer.IndexerId}"
+            + $"&categories={indexer.Categories}"
+            + $"&type=search"
+            + $"&limit={PageSize}"
+            + $"&offset={offset}";
+    }
+
+    private List<TorrentInfo> ParseNativeResponse(string json, string sourceName)
+    {
+        var torrents = new List<TorrentInfo>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var infoHash = item.GetProperty("infoHash").GetString();
+                var title = item.GetProperty("title").GetString();
+                var size = item.TryGetProperty("size", out var sz) ? sz.GetInt64().ToString() : null;
+                var pubDateStr = item.TryGetProperty("publishDate", out var pd) ? pd.GetString() : null;
+
+                if (string.IsNullOrWhiteSpace(infoHash) || string.IsNullOrWhiteSpace(title))
+                    continue;
+
+                DateTime ingestedAt = DateTime.UtcNow;
+                if (!string.IsNullOrWhiteSpace(pubDateStr) && DateTime.TryParse(pubDateStr, out var parsedDate))
+                {
+                    ingestedAt = parsedDate.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc)
+                        : parsedDate.ToUniversalTime();
+                }
+
+                var categories = item.TryGetProperty("categories", out var cats) ? cats : default;
+                var torrent = new TorrentInfo
+                {
+                    InfoHash = infoHash.ToLowerInvariant(),
+                    RawTitle = title,
+                    ParsedTitle = title,
+                    CleanedParsedTitle = Parsing.CleanQuery(title),
+                    NormalizedTitle = title.ToLowerInvariant(),
+                    Resolution = string.Empty,
+                    Size = size,
+                    IngestedAt = ingestedAt,
+                    Source = sourceName,
+                    Torrent = true,
+                    Category = ParseNativeCategories(categories),
+                };
+
+                torrents.Add(torrent);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[Prowlarr] Failed to parse native API response for {SourceName}", sourceName);
+        }
+
+        return torrents;
+    }
+
+    private static string ParseNativeCategories(JsonElement categories)
+    {
+        if (categories.ValueKind != JsonValueKind.Array) return "other";
+        foreach (var cat in categories.EnumerateArray())
+        {
+            var id = cat.TryGetProperty("id", out var cid) ? cid.GetInt32() : 0;
+            if (id / 1000 == 5) return "tvSeries";
+            if (id == 2000) return "movie";
+        }
+        return "other";
     }
 
     public async Task Invoke()
@@ -182,10 +257,7 @@ public class ProwlarrSyncJob(
         while (!CancellationToken.IsCancellationRequested)
         {
             page++;
-            var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/{indexer.IndexerId}/api"
-                + $"?t=search&apikey={configuration.Prowlarr.ApiKey}"
-                + $"&cat={indexer.Categories}&extended=1"
-                + $"&offset={offset}&limit={PageSize}";
+            var url = BuildNativeSearchUrl(indexer, "", offset);
 
             var response = await pipeline.ExecuteAsync(
                 async ct => await client.GetAsync(url, ct),
@@ -193,7 +265,7 @@ public class ProwlarrSyncJob(
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(CancellationToken);
-            var torrents = ParseRssFeed(content, indexer.SourceName, lastSyncAt);
+            var torrents = ParseNativeResponse(content, indexer.SourceName);
 
             if (torrents.Count == 0)
             {
@@ -259,98 +331,6 @@ public class ProwlarrSyncJob(
         await dbContext.SaveChangesAsync(CancellationToken);
 
         return totalProcessed;
-    }
-
-    private List<TorrentInfo> ParseRssFeed(string xmlContent, string sourceName, DateTime lastSyncAt)
-    {
-        var torrents = new List<TorrentInfo>();
-
-        try
-        {
-            var doc = XDocument.Parse(xmlContent);
-            var items = doc.Descendants("item").ToList();
-
-            foreach (var item in items)
-            {
-                var infoHash = GetTorznabAttr(item, "infohash");
-                if (string.IsNullOrWhiteSpace(infoHash))
-                {
-                    continue;
-                }
-
-                var title = item.Element("title")?.Value?.Trim();
-                if (string.IsNullOrWhiteSpace(title))
-                {
-                    continue;
-                }
-
-                var size = item.Element("size")?.Value;
-                var pubDateStr = item.Element("pubDate")?.Value;
-
-                DateTime ingestedAt;
-                if (!string.IsNullOrWhiteSpace(pubDateStr) && DateTime.TryParse(pubDateStr, out var parsedDate))
-                {
-                    ingestedAt = parsedDate.Kind == DateTimeKind.Unspecified
-                        ? DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc)
-                        : parsedDate.ToUniversalTime();
-                }
-                else
-                {
-                    ingestedAt = DateTime.UtcNow;
-                }
-
-                var torrent = new TorrentInfo
-                {
-                    InfoHash = infoHash.ToLowerInvariant(),
-                    RawTitle = title,
-                    ParsedTitle = title,
-                    CleanedParsedTitle = Parsing.CleanQuery(title),
-                    NormalizedTitle = title.ToLowerInvariant(),
-                    Resolution = string.Empty,
-                    Size = size,
-                    IngestedAt = ingestedAt,
-                    Source = sourceName,
-                    Torrent = true,
-                    Category = MapCategory(item),
-                };
-
-                torrents.Add(torrent);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "[ProwlarrSync] Failed to parse RSS feed for {SourceName}", sourceName);
-        }
-
-        return torrents;
-    }
-
-    private static string? GetTorznabAttr(XElement item, string attrName)
-    {
-        return item.Elements()
-            .Where(e => e.Name.LocalName == "attr" && e.Name.NamespaceName.Contains("torznab"))
-            .FirstOrDefault(e => e.Attribute("name")?.Value == attrName)
-            ?.Attribute("value")
-            ?.Value;
-    }
-
-    private static string MapCategory(XElement item)
-    {
-        var cats = item.Elements("category")
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .ToList();
-
-        if (cats.Count == 0) return "other";
-
-        foreach (var cat in cats)
-        {
-            if (cat.StartsWith("50")) return "tvSeries";
-        }
-
-        if (cats.Any(c => c == "2000")) return "movie";
-
-        return "other";
     }
 
     private async Task<TorrentSourceStats> GetOrCreateStatsAsync(string sourceName)
@@ -482,10 +462,7 @@ public class ProwlarrSyncJob(
             {
                 try
                 {
-                    var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/{indexer.IndexerId}/api"
-                        + $"?t=search&apikey={configuration.Prowlarr.ApiKey}"
-                        + $"&cat={indexer.Categories}&extended=1"
-                        + $"&q={Uri.EscapeDataString(title)}";
+                    var url = BuildNativeSearchUrl(indexer, title, 0);
 
                     var response = await pipeline.ExecuteAsync(
                         async ct => await client.GetAsync(url, ct),
@@ -494,7 +471,7 @@ public class ProwlarrSyncJob(
                     if (!response.IsSuccessStatusCode) continue;
 
                     var content = await response.Content.ReadAsStringAsync(CancellationToken);
-                    var torrents = ParseRssFeed(content, indexer.SourceName, DateTime.UnixEpoch);
+                    var torrents = ParseNativeResponse(content, indexer.SourceName);
 
                     totalQueried++;
 

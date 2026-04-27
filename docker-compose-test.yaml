@@ -100,7 +100,7 @@ services:
       # Prowlarr indexer scraping (enabled, 6-hour schedule, 4 indexers)
       - Zilean__Prowlarr__Enabled=true
       - Zilean__Prowlarr__BaseUrl=https://prowlarr.cloudpftc.com
-      - Zilean__Prowlarr__ApiKey=
+      - Zilean__Prowlarr__ApiKey=${PROWLARR_API_KEY:-}
       - Zilean__Prowlarr__Cron=0 */6 * * *
       - Zilean__Prowlarr__Indexers__0__IndexerId=5
       - Zilean__Prowlarr__Indexers__0__SourceName=nyaa
@@ -116,7 +116,7 @@ services:
       - Zilean__Prowlarr__Indexers__2__Categories=2000,5000
       - Zilean__Prowlarr__Indexers__3__IndexerId=6
       - Zilean__Prowlarr__Indexers__3__SourceName=subsplease
-      - Zilean__Prowlarr__Indexers__3__Enabled=true
+      - Zilean__Prowlarr__Indexers__3__Enabled=false
       - Zilean__Prowlarr__Indexers__3__Categories=5070,2000
     volumes:
       - /mnt/nvme/comet/zilean/data:/app/data
