@@ -497,6 +497,24 @@ public class ProwlarrSyncJob(
             {
                 foreach (var searchQuery in searchQueries)
                 {
+                    // Skip if this exact episode/season is already cached
+                    if (searchQuery != baseTitle)
+                    {
+                        var epExists = await dbContext.Torrents
+                            .FromSqlRaw("""
+                                SELECT * FROM "Torrents"
+                                WHERE "CleanedParsedTitle" IS NOT NULL
+                                AND "CleanedParsedTitle" ILIKE '%' || {0} || '%'
+                                LIMIT 1
+                                """, searchQuery)
+                            .AnyAsync(CancellationToken);
+
+                        if (epExists)
+                        {
+                            totalSkipped++;
+                            continue;
+                        }
+                    }
                     var offset = 0;
                     var maxPages = 2;
                     for (var p = 0; p < maxPages; p++)
