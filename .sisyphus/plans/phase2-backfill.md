@@ -48,7 +48,7 @@ Total:  68 terms × slow rate limiting = harvests everything discoverable
 
 ## TODOs
 
-- [ ] 1. Admin endpoint — POST /admin/sources/backfill/{sourceName}
+- [x] 1. Admin endpoint — POST /admin/sources/backfill/{sourceName}
 
   **What to do**:
   - In `AdminEndpoints.cs`, add:
@@ -89,7 +89,7 @@ Total:  68 terms × slow rate limiting = harvests everything discoverable
   **Commit**: YES
   - Message: `feat(admin): add backfill endpoint for historical Prowlarr sync`
 
-- [ ] 2. BackfillIndexerAsync — keyword scraping to bypass RSS limit
+- [x] 2. BackfillIndexerAsync — keyword scraping to bypass RSS limit
 
   **What to do**:
   - In `ProwlarrSyncJob.cs`, add keyword list and `BackfillIndexerAsync`:
@@ -182,7 +182,7 @@ Total:  68 terms × slow rate limiting = harvests everything discoverable
   **Commit**: YES
   - Message: `feat(backfill): add keyword-scraping backfill to bypass Prowlarr RSS limit`
 
-- [ ] 3. Build, test, deploy, verify
+- [x] 3. Build, test, deploy, verify
 
   **What to do**:
   - `dotnet build Zilean.sln` — 0 errors

@@ -19,6 +19,7 @@ public static class AdminEndpoints
 
         group.MapGet("/sources/status", GetSourcesStatus);
         group.MapPost("/sources/trigger/{sourceName}", TriggerSourceSync);
+        group.MapPost("/sources/backfill/{sourceName}", BackfillSource);
 
         return app;
     }
@@ -83,6 +84,30 @@ public static class AdminEndpoints
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Sync Failed");
         }
+    }
+
+    private static async Task<IResult> BackfillSource(
+        string sourceName,
+        [FromQuery] string untilDate,
+        ProwlarrSyncJob syncJob)
+    {
+        if (string.IsNullOrWhiteSpace(untilDate))
+        {
+            return TypedResults.BadRequest("untilDate is required. Use YYYY-MM-DD format.");
+        }
+
+        if (!DateTime.TryParse(untilDate, out var date))
+        {
+            return TypedResults.BadRequest("Invalid date format. Use YYYY-MM-DD.");
+        }
+
+        var utcDate = date.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(date, DateTimeKind.Utc)
+            : date.ToUniversalTime();
+
+        var count = await syncJob.BackfillIndexerAsync(sourceName, utcDate);
+
+        return TypedResults.Ok(new { sourceName, untilDate, torrentsProcessed = count });
     }
 }
 

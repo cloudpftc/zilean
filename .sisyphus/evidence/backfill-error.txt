@@ -1,0 +1,2 @@
+"Invalid date format. Use YYYY-MM-DD."
+HTTP_STATUS: 400

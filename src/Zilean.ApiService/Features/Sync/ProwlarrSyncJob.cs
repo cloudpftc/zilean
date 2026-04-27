@@ -264,4 +264,137 @@ public class ProwlarrSyncJob(
             logger.LogError(ex, "[ProwlarrSync] Failed to save error stats for {SourceName}", sourceName);
         }
     }
+
+    private static readonly string[] _backfillKeywords =
+    [
+        "2000","2001","2002","2003","2004","2005","2006","2007","2008","2009",
+        "2010","2011","2012","2013","2014","2015","2016","2017","2018","2019",
+        "2020","2021","2022","2023","2024","2025","2026",
+        "1","2","3","4","5",
+        "1080p","2160p","BluRay","WEB-DL","HEVC","H264","x264","x265","the","and",
+        "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"
+    ];
+
+    public async Task<int> BackfillIndexerAsync(string sourceName, DateTime untilDate)
+    {
+        var indexer = configuration.Prowlarr.Indexers
+            .FirstOrDefault(i => i.SourceName.Equals(sourceName, StringComparison.OrdinalIgnoreCase));
+
+        if (indexer == null)
+        {
+            throw new InvalidOperationException($"Indexer '{sourceName}' not found.");
+        }
+
+        var stats = await GetOrCreateStatsAsync(sourceName);
+        stats.LastSyncAt = untilDate;
+        await dbContext.SaveChangesAsync(CancellationToken);
+
+        logger.LogInformation("[ProwlarrBackfill] Starting keyword backfill for '{SourceName}' with untilDate {UntilDate}",
+            sourceName, untilDate.ToString("yyyy-MM-dd"));
+
+        var totalProcessed = 0;
+        foreach (var keyword in _backfillKeywords)
+        {
+            if (CancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            var count = await SyncIndexerWithQueryAsync(indexer, keyword, backfillMode: true);
+            totalProcessed += count;
+
+            await Task.Delay(5000, CancellationToken);
+        }
+
+        logger.LogInformation("[ProwlarrBackfill] Complete for '{SourceName}': {Total} torrents from {Keywords} keywords",
+            sourceName, totalProcessed, _backfillKeywords.Length);
+
+        return totalProcessed;
+    }
+
+    private async Task<int> SyncIndexerWithQueryAsync(ProwlarrIndexer indexer, string query, bool backfillMode = false)
+    {
+        var stats = await GetOrCreateStatsAsync(indexer.SourceName);
+        var lastSyncAt = stats.LastSyncAt;
+
+        var httpClient = httpClientFactory.CreateClient("Prowlarr");
+        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Zilean/2.0");
+
+        var offset = 0;
+        var totalProcessed = 0;
+        var page = 0;
+        DateTime? maxPubDate = null;
+
+        while (!CancellationToken.IsCancellationRequested)
+        {
+            page++;
+            var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/{indexer.IndexerId}/api"
+                + $"?t=search&apikey={configuration.Prowlarr.ApiKey}"
+                + $"&cat={indexer.Categories}&extended=1"
+                + $"&offset={offset}&limit={PageSize}"
+                + $"&q={Uri.EscapeDataString(query)}";
+
+            var response = await httpClient.GetAsync(url, CancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync(CancellationToken);
+            var torrents = ParseRssFeed(content, indexer.SourceName, lastSyncAt);
+
+            if (torrents.Count == 0)
+            {
+                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: 0 torrents",
+                    indexer.SourceName, query, page);
+                break;
+            }
+
+            var itemsToProcess = backfillMode
+                ? torrents
+                : torrents.Where(t => t.IngestedAt > lastSyncAt).ToList();
+
+            if (itemsToProcess.Count > 0)
+            {
+                await dbContext.UpsertTorrentsAsync(itemsToProcess, indexer.SourceName, CancellationToken);
+                totalProcessed += itemsToProcess.Count;
+
+                var pageMaxDate = itemsToProcess.Max(t => t.IngestedAt);
+                if (maxPubDate == null || pageMaxDate > maxPubDate)
+                {
+                    maxPubDate = pageMaxDate;
+                }
+
+                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: {Count} torrents",
+                    indexer.SourceName, query, page, itemsToProcess.Count);
+            }
+            else
+            {
+                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: 0 new torrents",
+                    indexer.SourceName, query, page);
+
+                if (!backfillMode)
+                {
+                    break;
+                }
+            }
+
+            offset += PageSize;
+
+            if (torrents.Count < PageSize)
+            {
+                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: last page ({Count} items)",
+                    indexer.SourceName, query, page, torrents.Count);
+                break;
+            }
+
+            var delayMs = backfillMode ? 5000 : 1000;
+            await Task.Delay(delayMs, CancellationToken);
+        }
+
+        if (backfillMode && maxPubDate.HasValue)
+        {
+            stats.LastSyncAt = maxPubDate.Value;
+            await dbContext.SaveChangesAsync(CancellationToken);
+        }
+
+        return totalProcessed;
+    }
 }
