@@ -43,7 +43,7 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static IResult PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IShellExecutionService executionService, ILogger<DmmSyncJob> syncLogger, IMutex mutex, SyncOnDemandState state, ZileanDbContext dbContext, IFileAuditLogService fileAuditLogService, IIngestionQueueService ingestionQueueService, IQueryCacheService queryCache)
+    private static IResult PerformOnDemandScrape(HttpContext context, ILogger<GeneralInstance> logger, IServiceScopeFactory scopeFactory, IMutex mutex, SyncOnDemandState state)
     {
         if (state.IsRunning)
         {
@@ -60,15 +60,24 @@ public static class SearchEndpoints
             // Fire-and-forget: start scrape in background and return immediately
             _ = Task.Run(async () =>
             {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<GeneralInstance>>();
+                var executionService = scope.ServiceProvider.GetRequiredService<IShellExecutionService>();
+                var syncLogger = scope.ServiceProvider.GetRequiredService<ILogger<DmmSyncJob>>();
+                var dbContext = scope.ServiceProvider.GetRequiredService<ZileanDbContext>();
+                var fileAuditLogService = scope.ServiceProvider.GetRequiredService<IFileAuditLogService>();
+                var ingestionQueueService = scope.ServiceProvider.GetRequiredService<IIngestionQueueService>();
+                var queryCache = scope.ServiceProvider.GetRequiredService<IQueryCacheService>();
+
                 try
                 {
-                    logger.LogInformation("On-demand scrape mutex lock acquired.");
+                    scopedLogger.LogInformation("On-demand scrape mutex lock acquired.");
                     state.IsRunning = true;
                     await new DmmSyncJob(executionService, syncLogger, dbContext, fileAuditLogService, ingestionQueueService, queryCache).Invoke();
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "On-demand scrape failed.");
+                    scopedLogger.LogError(ex, "On-demand scrape failed.");
                 }
                 finally
                 {

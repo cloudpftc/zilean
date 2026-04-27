@@ -227,3 +227,51 @@ curl -s http://localhost:8181/diagnostics/queue | jq .
 ```
 
 **Rule**: If a diagnostic endpoint exists that answers your question, USE IT. Only fall back to raw psql or log grepping if the endpoint does not cover your specific need. If you find yourself needing data the endpoints don't provide, that's a signal to ADD a new diagnostic endpoint.
+
+## Log Analysis (MANDATORY)
+
+**CRITICAL**: Never use `docker logs zilean` for log analysis. The container output is truncated and mixed with stack traces. Instead, use the structured log files on the host:
+
+### Log File Location
+```
+/mnt/nvme/comet/zilean/data/logs/
+```
+
+Files are named `zilean-YYYYMMDD.log` with daily rotation:
+```bash
+# List all log files
+ls -la /mnt/nvme/comet/zilean/data/logs/
+
+# Find today's log
+ls -t /mnt/nvme/comet/zilean/data/logs/ | head -1
+
+# Search for specific patterns in today's log
+TODAY=$(ls -t /mnt/nvme/comet/zilean/data/logs/ | head -1)
+rg "pattern" /mnt/nvme/comet/zilean/data/logs/$TODAY
+
+# Search across ALL log files (for historical analysis)
+rg "pattern" /mnt/nvme/comet/zilean/data/logs/
+
+# Get last N lines of current log
+tail -100 /mnt/nvme/comet/zilean/data/logs/$(ls -t /mnt/nvme/comet/zilean/data/logs/ | head -1)
+```
+
+### Log Format
+Each line follows the pattern: `[HH:MM:SS] | LEVEL | "Source" | Message`
+
+Common sources to grep for:
+- `ProwlarrSyncJob` — Prowlarr ingestion activity
+- `ProwlarrBackfill` — Backfill-specific operations
+- `IngestionQueue` — Queue processing
+- `TorrentInfoService` — Torrent storage
+- `Imdb` — IMDb matching
+
+### Anti-Pattern (NEVER do this)
+```bash
+# WRONG - truncated, mixed with stack traces, limited history
+docker logs zilean 2>&1 | grep "something" | tail -50
+
+# RIGHT - full history, structured, grep-friendly
+TODAY=$(ls -t /mnt/nvme/comet/zilean/data/logs/ | head -1)
+rg "something" /mnt/nvme/comet/zilean/data/logs/$TODAY
+```
