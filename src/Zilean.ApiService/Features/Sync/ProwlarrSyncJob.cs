@@ -1,3 +1,8 @@
+using System.Threading.RateLimiting;
+using Polly;
+using Polly.CircuitBreaker;
+using Polly.Retry;
+using Polly.Timeout;
 using System.Xml.Linq;
 using Zilean.Database.Extensions;
 using Zilean.Shared.Features.Ingestion;
@@ -7,11 +12,89 @@ namespace Zilean.ApiService.Features.Sync;
 public class ProwlarrSyncJob(
     ILogger<ProwlarrSyncJob> logger,
     ZileanDbContext dbContext,
-    IHttpClientFactory httpClientFactory,
     ZileanConfiguration configuration) : IInvocable, ICancellableInvocable
 {
     public CancellationToken CancellationToken { get; set; }
     private const int PageSize = 100;
+
+    private ResiliencePipeline<HttpResponseMessage>? _prowlarrPipeline;
+    private HttpClient? _prowlarrClient;
+
+    private ResiliencePipeline<HttpResponseMessage> GetProwlarrPipeline()
+    {
+        return _prowlarrPipeline ??= new ResiliencePipelineBuilder<HttpResponseMessage>()
+            .AddRateLimiter(new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 1,
+                TokensPerPeriod = 1,
+                ReplenishmentPeriod = TimeSpan.FromSeconds(3),
+                QueueLimit = 10,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            }))
+            .AddTimeout(new TimeoutStrategyOptions
+            {
+                Timeout = TimeSpan.FromMinutes(5),
+                OnTimeout = args =>
+                {
+                    logger.LogWarning("[ProwlarrResilience] Request timed out after {Timeout}s", args.Timeout.TotalSeconds);
+                    return default;
+                },
+            })
+            .AddRetry(new RetryStrategyOptions<HttpResponseMessage>
+            {
+                ShouldHandle = args => args.Outcome.Result?.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    ? PredicateResult.True()
+                    : PredicateResult.False(),
+                MaxRetryAttempts = 5,
+                BackoffType = DelayBackoffType.Exponential,
+                Delay = TimeSpan.FromSeconds(3),
+                MaxDelay = TimeSpan.FromSeconds(30),
+                UseJitter = true,
+                OnRetry = args =>
+                {
+                    logger.LogWarning("[ProwlarrResilience] Retry {Attempt}/{Max} after {Delay}s (429 rate limited)",
+                        args.AttemptNumber + 1, 5, args.RetryDelay.TotalSeconds);
+                    return default;
+                },
+            })
+            .AddCircuitBreaker(new CircuitBreakerStrategyOptions<HttpResponseMessage>
+            {
+                ShouldHandle = args => args.Outcome.Result?.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    ? PredicateResult.True()
+                    : PredicateResult.False(),
+                FailureRatio = 0.5,
+                SamplingDuration = TimeSpan.FromSeconds(60),
+                MinimumThroughput = 5,
+                BreakDuration = TimeSpan.FromSeconds(30),
+                OnOpened = args =>
+                {
+                    logger.LogWarning("[ProwlarrResilience] Circuit BREAKER OPEN — too many 429s, pausing {Break}s",
+                        args.BreakDuration.TotalSeconds);
+                    return default;
+                },
+                OnClosed = _ =>
+                {
+                    logger.LogInformation("[ProwlarrResilience] Circuit breaker closed — resuming");
+                    return default;
+                },
+                OnHalfOpened = _ => default,
+            })
+            .Build();
+    }
+
+    private static readonly SocketsHttpHandler _prowlarrHandler = new()
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        EnableMultipleHttp2Connections = true,
+    };
+
+    private HttpClient GetProwlarrClient()
+    {
+        if (_prowlarrClient is not null) return _prowlarrClient;
+        var client = new HttpClient(_prowlarrHandler) { Timeout = TimeSpan.FromMinutes(5) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Zilean/2.0");
+        return _prowlarrClient = client;
+    }
 
     public async Task Invoke()
     {
@@ -86,8 +169,8 @@ public class ProwlarrSyncJob(
         var stats = await GetOrCreateStatsAsync(indexer.SourceName);
         var lastSyncAt = stats.LastSyncAt;
 
-        var httpClient = httpClientFactory.CreateClient("Prowlarr");
-        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Zilean/2.0");
+        var client = GetProwlarrClient();
+        var pipeline = GetProwlarrPipeline();
 
         var offset = 0;
         var totalProcessed = 0;
@@ -102,7 +185,9 @@ public class ProwlarrSyncJob(
                 + $"&cat={indexer.Categories}&extended=1"
                 + $"&offset={offset}&limit={PageSize}";
 
-            var response = await httpClient.GetAsync(url, CancellationToken);
+            var response = await pipeline.ExecuteAsync(
+                async ct => await client.GetAsync(url, ct),
+                CancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(CancellationToken);
@@ -317,8 +402,8 @@ public class ProwlarrSyncJob(
         var stats = await GetOrCreateStatsAsync(indexer.SourceName);
         var lastSyncAt = stats.LastSyncAt;
 
-        var httpClient = httpClientFactory.CreateClient("Prowlarr");
-        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Zilean/2.0");
+        var client = GetProwlarrClient();
+        var pipeline = GetProwlarrPipeline();
 
         var offset = 0;
         var totalProcessed = 0;
@@ -334,7 +419,9 @@ public class ProwlarrSyncJob(
                 + $"&offset={offset}&limit={PageSize}"
                 + $"&q={Uri.EscapeDataString(query)}";
 
-            var response = await httpClient.GetAsync(url, CancellationToken);
+            var response = await pipeline.ExecuteAsync(
+                async ct => await client.GetAsync(url, ct),
+                CancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(CancellationToken);

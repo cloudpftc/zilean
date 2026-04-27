@@ -379,7 +379,7 @@ public class ProwlarrSyncJobTests : IAsyncLifetime
             Indexers = [.. indexers],
         };
 
-        return new ProwlarrSyncJob(_logger, _dbContext, _httpClientFactory, _fixture.ZileanConfiguration)
+        return new ProwlarrSyncJob(_logger, _dbContext, _fixture.ZileanConfiguration)
         {
             CancellationToken = CancellationToken.None,
         };
