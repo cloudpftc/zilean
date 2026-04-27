@@ -478,41 +478,53 @@ public class ProwlarrSyncJob(
                 continue;
             }
 
-            // Global search across ALL Prowlarr indexers (no per-indexer restriction)
+            // Paginate through results for this title (2 pages = up to 200 torrents)
+            var allTorrents = new List<TorrentInfo>();
             var foundTorrents = 0;
             try
             {
-                var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
-                    + $"?query={Uri.EscapeDataString(title)}"
-                    + $"&type=search"
-                    + $"&limit={PageSize}"
-                    + $"&offset=0";
-
-                var response = await pipeline.ExecuteAsync(
-                    async ct => await client.GetAsync(url, ct),
-                    CancellationToken);
-
-                totalQueried++;
-
-                if (response.IsSuccessStatusCode)
+                var offset = 0;
+                var maxPages = 2;
+                for (var p = 0; p < maxPages; p++)
                 {
+                    var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
+                        + $"?query={Uri.EscapeDataString(title)}"
+                        + $"&type=search"
+                        + $"&limit={PageSize}"
+                        + $"&offset={offset}";
+
+                    var response = await pipeline.ExecuteAsync(
+                        async ct => await client.GetAsync(url, ct),
+                        CancellationToken);
+
+                    if (!response.IsSuccessStatusCode) break;
+
+                    totalQueried++;
                     var content = await response.Content.ReadAsStringAsync(CancellationToken);
-                    var torrents = ParseNativeResponse(content, "prowlarr");
+                    var pageTorrents = ParseNativeResponse(content, "prowlarr");
 
-                    if (torrents.Count > 0)
-                    {
-                        await dbContext.UpsertTorrentsAsync(torrents, "prowlarr", CancellationToken);
-                        totalProcessed += torrents.Count;
-                        foundTorrents = torrents.Count;
+                    if (pageTorrents.Count == 0) break;
 
-                        logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Count} torrents",
-                            title, imdbEntry.Category, imdbEntry.Year, torrents.Count);
-                    }
-                    else if (totalQueried % 50 == 0)
-                    {
-                        logger.LogDebug("[ImdbBackfill] Not found: '{Title}' ({Category}, {Year})",
-                            title, imdbEntry.Category, imdbEntry.Year);
-                    }
+                    allTorrents.AddRange(pageTorrents);
+                    offset += PageSize;
+
+                    if (pageTorrents.Count < PageSize) break;
+
+                    await Task.Delay(1000, CancellationToken);
+                }
+
+                if (allTorrents.Count > 0)
+                {
+                    allTorrents = allTorrents
+                        .OrderByDescending(t => long.TryParse(t.Size, out var s) ? s : 0)
+                        .ToList();
+
+                    await dbContext.UpsertTorrentsAsync(allTorrents, "prowlarr", CancellationToken);
+                    totalProcessed += allTorrents.Count;
+                    foundTorrents = allTorrents.Count;
+
+                    logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Count} torrents ({Pages} pages)",
+                        title, imdbEntry.Category, imdbEntry.Year, allTorrents.Count, offset / PageSize);
                 }
             }
             catch (Exception ex)
