@@ -165,7 +165,7 @@ public class ProwlarrSyncJob(
         return await SyncIndexerAsync(indexer);
     }
 
-    private async Task<int> SyncIndexerAsync(ProwlarrIndexer indexer)
+    private async Task<int> SyncIndexerAsync(ProwlarrIndexer indexer, bool backfillMode = false)
     {
         var stats = await GetOrCreateStatsAsync(indexer.SourceName);
         var lastSyncAt = stats.LastSyncAt;
@@ -177,6 +177,7 @@ public class ProwlarrSyncJob(
         var totalProcessed = 0;
         var page = 0;
         DateTime? maxPubDate = null;
+        var logPrefix = backfillMode ? "[ProwlarrBackfill]" : "[ProwlarrSync]";
 
         while (!CancellationToken.IsCancellationRequested)
         {
@@ -196,47 +197,63 @@ public class ProwlarrSyncJob(
 
             if (torrents.Count == 0)
             {
-                logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: 0 torrents (end of feed)", indexer.SourceName, page);
+                logger.LogInformation("{Prefix} {SourceName} page {Page}: 0 torrents (end of feed)",
+                    logPrefix, indexer.SourceName, page);
                 break;
             }
 
-            if (torrents.Count < PageSize)
-            {
-                logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: {Count} torrents (last page)", indexer.SourceName, page, torrents.Count);
-            }
+            var itemsToProcess = backfillMode
+                ? torrents
+                : torrents.Where(t => t.IngestedAt > lastSyncAt).ToList();
 
-            var allOlderOrEqual = torrents.All(t => t.IngestedAt <= lastSyncAt);
-            if (allOlderOrEqual)
+            if (itemsToProcess.Count > 0)
             {
-                break;
-            }
+                await dbContext.UpsertTorrentsAsync(itemsToProcess, indexer.SourceName, CancellationToken);
+                totalProcessed += itemsToProcess.Count;
 
-            var newItems = torrents.Where(t => t.IngestedAt > lastSyncAt).ToList();
-            if (newItems.Count > 0)
-            {
-                await dbContext.UpsertTorrentsAsync(newItems, indexer.SourceName, CancellationToken);
-                totalProcessed += newItems.Count;
-
-                var pageMaxDate = newItems.Max(t => t.IngestedAt);
+                var pageMaxDate = itemsToProcess.Max(t => t.IngestedAt);
                 if (maxPubDate == null || pageMaxDate > maxPubDate)
                 {
                     maxPubDate = pageMaxDate;
                 }
 
-                logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: {Count} torrents", indexer.SourceName, page, newItems.Count);
+                logger.LogInformation("{Prefix} {SourceName} page {Page}: {Count} torrents",
+                    logPrefix, indexer.SourceName, page, itemsToProcess.Count);
             }
             else
             {
-                logger.LogInformation("[ProwlarrSync] {SourceName} page {Page}: 0 new torrents (all at or before checkpoint)", indexer.SourceName, page);
+                logger.LogInformation("{Prefix} {SourceName} page {Page}: 0 new torrents",
+                    logPrefix, indexer.SourceName, page);
+
+                if (!backfillMode)
+                {
+                    break;
+                }
             }
 
             offset += PageSize;
 
-            // Respect Prowlarr rate limits: 1s delay between pages
-            await Task.Delay(1000, CancellationToken);
+            if (torrents.Count < PageSize)
+            {
+                logger.LogInformation("{Prefix} {SourceName} page {Page}: last page ({Count} items)",
+                    logPrefix, indexer.SourceName, page, torrents.Count);
+                break;
+            }
+
+            if (backfillMode && maxPubDate.HasValue && maxPubDate.Value > lastSyncAt)
+            {
+                stats.LastSyncAt = maxPubDate.Value;
+            }
+
+            var delayMs = backfillMode ? 5000 : 1000;
+            await Task.Delay(delayMs, CancellationToken);
         }
 
-        stats.LastSyncAt = maxPubDate ?? stats.LastSyncAt;
+        if (backfillMode && maxPubDate.HasValue && maxPubDate.Value > lastSyncAt)
+        {
+            stats.LastSyncAt = maxPubDate.Value;
+        }
+
         stats.TorrentCount += totalProcessed;
         stats.LastError = null;
         await dbContext.SaveChangesAsync(CancellationToken);
@@ -394,132 +411,14 @@ public class ProwlarrSyncJob(
         stats.LastSyncAt = untilDate;
         await dbContext.SaveChangesAsync(CancellationToken);
 
-        logger.LogInformation("[ProwlarrBackfill] Starting keyword backfill for '{SourceName}' with untilDate {UntilDate}",
+        logger.LogInformation("[ProwlarrBackfill] Starting broad backfill for '{SourceName}' from untilDate {UntilDate}",
             sourceName, untilDate.ToString("yyyy-MM-dd"));
 
-        var totalProcessed = 0;
-        foreach (var keyword in _backfillKeywords)
-        {
-            if (CancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
+        var count = await SyncIndexerAsync(indexer, backfillMode: true);
 
-            int count;
-            try
-            {
-                count = await SyncIndexerWithQueryAsync(indexer, keyword, backfillMode: true);
-            }
-            catch (BrokenCircuitException)
-            {
-                logger.LogWarning("[ProwlarrBackfill] Circuit breaker open, skipping keyword '{Keyword}' for '{SourceName}'",
-                    keyword, sourceName);
-                await Task.Delay(10000, CancellationToken);
-                continue;
-            }
-            catch (TimeoutRejectedException)
-            {
-                logger.LogWarning("[ProwlarrBackfill] Timeout on keyword '{Keyword}' for '{SourceName}', continuing",
-                    keyword, sourceName);
-                await Task.Delay(5000, CancellationToken);
-                continue;
-            }
-            totalProcessed += count;
+        logger.LogInformation("[ProwlarrBackfill] Complete for '{SourceName}': {Total} torrents",
+            sourceName, count);
 
-            await Task.Delay(5000, CancellationToken);
-        }
-
-        logger.LogInformation("[ProwlarrBackfill] Complete for '{SourceName}': {Total} torrents from {Keywords} keywords",
-            sourceName, totalProcessed, _backfillKeywords.Length);
-
-        return totalProcessed;
-    }
-
-    private async Task<int> SyncIndexerWithQueryAsync(ProwlarrIndexer indexer, string query, bool backfillMode = false)
-    {
-        var stats = await GetOrCreateStatsAsync(indexer.SourceName);
-        var lastSyncAt = stats.LastSyncAt;
-
-        var client = GetProwlarrClient();
-        var pipeline = GetProwlarrPipeline();
-
-        var offset = 0;
-        var totalProcessed = 0;
-        var page = 0;
-        DateTime? maxPubDate = null;
-
-        while (!CancellationToken.IsCancellationRequested)
-        {
-            page++;
-            var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/{indexer.IndexerId}/api"
-                + $"?t=search&apikey={configuration.Prowlarr.ApiKey}"
-                + $"&cat={indexer.Categories}&extended=1"
-                + $"&offset={offset}&limit={PageSize}"
-                + $"&q={Uri.EscapeDataString(query)}";
-
-            var response = await pipeline.ExecuteAsync(
-                async ct => await client.GetAsync(url, ct),
-                CancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var content = await response.Content.ReadAsStringAsync(CancellationToken);
-            var torrents = ParseRssFeed(content, indexer.SourceName, lastSyncAt);
-
-            if (torrents.Count == 0)
-            {
-                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: 0 torrents",
-                    indexer.SourceName, query, page);
-                break;
-            }
-
-            var itemsToProcess = backfillMode
-                ? torrents
-                : torrents.Where(t => t.IngestedAt > lastSyncAt).ToList();
-
-            if (itemsToProcess.Count > 0)
-            {
-                await dbContext.UpsertTorrentsAsync(itemsToProcess, indexer.SourceName, CancellationToken);
-                totalProcessed += itemsToProcess.Count;
-
-                var pageMaxDate = itemsToProcess.Max(t => t.IngestedAt);
-                if (maxPubDate == null || pageMaxDate > maxPubDate)
-                {
-                    maxPubDate = pageMaxDate;
-                }
-
-                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: {Count} torrents",
-                    indexer.SourceName, query, page, itemsToProcess.Count);
-            }
-            else
-            {
-                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: 0 new torrents",
-                    indexer.SourceName, query, page);
-
-                if (!backfillMode)
-                {
-                    break;
-                }
-            }
-
-            offset += PageSize;
-
-            if (torrents.Count < PageSize)
-            {
-                logger.LogInformation("[ProwlarrBackfill] {SourceName} query '{Query}' page {Page}: last page ({Count} items)",
-                    indexer.SourceName, query, page, torrents.Count);
-                break;
-            }
-
-            var delayMs = backfillMode ? 5000 : 1000;
-            await Task.Delay(delayMs, CancellationToken);
-        }
-
-        if (backfillMode && maxPubDate.HasValue)
-        {
-            stats.LastSyncAt = maxPubDate.Value;
-            await dbContext.SaveChangesAsync(CancellationToken);
-        }
-
-        return totalProcessed;
+        return count;
     }
 }
