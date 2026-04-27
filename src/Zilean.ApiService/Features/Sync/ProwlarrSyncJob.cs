@@ -553,6 +553,8 @@ public class ProwlarrSyncJob(
                 if (allTorrents.Count > 0)
                 {
                     allTorrents = allTorrents
+                        .GroupBy(t => t.InfoHash)
+                        .Select(g => g.First())
                         .OrderByDescending(t => long.TryParse(t.Size, out var s) ? s : 0)
                         .ToList();
 
