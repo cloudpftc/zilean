@@ -454,17 +454,16 @@ public class ProwlarrSyncJob(
             }
             if (titlesToTry.Count == 0) continue;
 
-            foreach (var title in titlesToTry)
+            foreach (var baseTitle in titlesToTry)
             {
             // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)
-            // Use similarity > 0.5 (higher than default 0.3) to avoid false positives
             var existsInDb = await dbContext.Torrents
                 .FromSqlRaw("""
                     SELECT * FROM "Torrents"
                     WHERE "CleanedParsedTitle" IS NOT NULL
                     AND similarity("CleanedParsedTitle", {0}) > 0.5
                     LIMIT 1
-                    """, title)
+                    """, baseTitle)
                 .AnyAsync(CancellationToken);
 
             if (existsInDb)
@@ -478,39 +477,55 @@ public class ProwlarrSyncJob(
                 continue;
             }
 
-            // Paginate through results for this title (2 pages = up to 200 torrents)
+            // For TV shows, search per-season for complete coverage
+            var searchQueries = new List<string> { baseTitle };
+            if (imdbEntry.Category == "tvSeries" || imdbEntry.Category == "tvSeries")
+            {
+                // Add season-specific queries: "Show S01", "Show S02", etc.
+                for (var s = 1; s <= 30; s++)
+                    searchQueries.Add($"{baseTitle} S{s:D2}");
+            }
+
+            // Paginate through results for this title
             var allTorrents = new List<TorrentInfo>();
             var foundTorrents = 0;
             try
             {
-                var offset = 0;
-                var maxPages = 2;
-                for (var p = 0; p < maxPages; p++)
+                foreach (var searchQuery in searchQueries)
                 {
-                    var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
-                        + $"?query={Uri.EscapeDataString(title)}"
-                        + $"&type=search"
-                        + $"&limit={PageSize}"
-                        + $"&offset={offset}";
+                    var offset = 0;
+                    var maxPages = 2;
+                    for (var p = 0; p < maxPages; p++)
+                    {
+                        var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
+                            + $"?query={Uri.EscapeDataString(searchQuery)}"
+                            + $"&type=search"
+                            + $"&limit={PageSize}"
+                            + $"&offset={offset}";
 
-                    var response = await pipeline.ExecuteAsync(
-                        async ct => await client.GetAsync(url, ct),
-                        CancellationToken);
+                        var response = await pipeline.ExecuteAsync(
+                            async ct => await client.GetAsync(url, ct),
+                            CancellationToken);
 
-                    if (!response.IsSuccessStatusCode) break;
+                        if (!response.IsSuccessStatusCode) break;
 
-                    totalQueried++;
-                    var content = await response.Content.ReadAsStringAsync(CancellationToken);
-                    var pageTorrents = ParseNativeResponse(content, "prowlarr");
+                        totalQueried++;
+                        var content = await response.Content.ReadAsStringAsync(CancellationToken);
+                        var pageTorrents = ParseNativeResponse(content, "prowlarr");
 
-                    if (pageTorrents.Count == 0) break;
+                        if (pageTorrents.Count == 0) break;
 
-                    allTorrents.AddRange(pageTorrents);
-                    offset += PageSize;
+                        allTorrents.AddRange(pageTorrents);
+                        offset += PageSize;
 
-                    if (pageTorrents.Count < PageSize) break;
+                        if (pageTorrents.Count < PageSize) break;
 
-                    await Task.Delay(1000, CancellationToken);
+                        await Task.Delay(1000, CancellationToken);
+                    }
+
+                    // For TV show season searches, stop when a season returns 0 results (no more seasons)
+                    if (searchQuery != baseTitle && allTorrents.Count == foundTorrents) break;
+                    foundTorrents = allTorrents.Count;
                 }
 
                 if (allTorrents.Count > 0)
@@ -523,13 +538,13 @@ public class ProwlarrSyncJob(
                     totalProcessed += allTorrents.Count;
                     foundTorrents = allTorrents.Count;
 
-                    logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Count} torrents ({Pages} pages)",
-                        title, imdbEntry.Category, imdbEntry.Year, allTorrents.Count, offset / PageSize);
+                    logger.LogInformation("[ImdbBackfill] '{Title}' ({Category}, {Year}) → {Count} torrents ({Searches} searches)",
+                        baseTitle, imdbEntry.Category, imdbEntry.Year, allTorrents.Count, totalQueried > 0 ? 1 : 0);
                 }
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[ImdbBackfill] Failed to query for '{Title}'", title);
+                logger.LogWarning(ex, "[ImdbBackfill] Failed to query for '{Title}'", baseTitle);
             }
 
             if (foundTorrents > 0) break;
