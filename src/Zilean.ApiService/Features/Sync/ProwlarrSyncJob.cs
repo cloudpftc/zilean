@@ -1,11 +1,12 @@
 using System.Threading.RateLimiting;
+using System.Xml.Linq;
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
 using Polly.Timeout;
-using System.Xml.Linq;
 using Zilean.Database.Extensions;
 using Zilean.Shared.Features.Ingestion;
+using Zilean.Shared.Features.Utilities;
 
 namespace Zilean.ApiService.Features.Sync;
 
@@ -286,14 +287,14 @@ public class ProwlarrSyncJob(
                     InfoHash = infoHash.ToLowerInvariant(),
                     RawTitle = title,
                     ParsedTitle = title,
-                    CleanedParsedTitle = title,
+                    CleanedParsedTitle = Parsing.CleanQuery(title),
                     NormalizedTitle = title.ToLowerInvariant(),
                     Resolution = string.Empty,
                     Size = size,
                     IngestedAt = ingestedAt,
                     Source = sourceName,
                     Torrent = true,
-                    Category = "other",
+                    Category = MapCategory(item),
                 };
 
                 torrents.Add(torrent);
@@ -314,6 +315,25 @@ public class ProwlarrSyncJob(
             .FirstOrDefault(e => e.Attribute("name")?.Value == attrName)
             ?.Attribute("value")
             ?.Value;
+    }
+
+    private static string MapCategory(XElement item)
+    {
+        var cats = item.Elements("category")
+            .Select(c => c.Value)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToList();
+
+        if (cats.Count == 0) return "other";
+
+        foreach (var cat in cats)
+        {
+            if (cat.StartsWith("50")) return "tvSeries";
+        }
+
+        if (cats.Any(c => c == "2000")) return "movie";
+
+        return "other";
     }
 
     private async Task<TorrentSourceStats> GetOrCreateStatsAsync(string sourceName)
