@@ -385,7 +385,25 @@ public class ProwlarrSyncJob(
                 break;
             }
 
-            var count = await SyncIndexerWithQueryAsync(indexer, keyword, backfillMode: true);
+            int count;
+            try
+            {
+                count = await SyncIndexerWithQueryAsync(indexer, keyword, backfillMode: true);
+            }
+            catch (BrokenCircuitException)
+            {
+                logger.LogWarning("[ProwlarrBackfill] Circuit breaker open, skipping keyword '{Keyword}' for '{SourceName}'",
+                    keyword, sourceName);
+                await Task.Delay(10000, CancellationToken);
+                continue;
+            }
+            catch (TimeoutRejectedException)
+            {
+                logger.LogWarning("[ProwlarrBackfill] Timeout on keyword '{Keyword}' for '{SourceName}', continuing",
+                    keyword, sourceName);
+                await Task.Delay(5000, CancellationToken);
+                continue;
+            }
             totalProcessed += count;
 
             await Task.Delay(5000, CancellationToken);
