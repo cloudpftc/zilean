@@ -26,7 +26,12 @@ public class ImdbFileConfiguration:  IEntityTypeConfiguration<ImdbFile>
         builder.Property(i => i.Year)
             .HasColumnType("integer");
 
+        builder.Property(i => i.LastQueriedAt)
+            .HasColumnType("timestamp with time zone");
+
         builder.HasIndex(i => i.ImdbId)
             .IsUnique();
+
+        builder.HasIndex(i => i.LastQueriedAt);
     }
 }

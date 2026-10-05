@@ -53,6 +53,31 @@ public class ProwlarrConfiguration
     /// indexer the way an unthrottled scraper would.
     /// </summary>
     public int ImdbBackfillMaxConcurrentRequests { get; set; } = 1;
+
+    /// <summary>
+    /// Default retry window, in days, used by the backfill when
+    /// <see cref="ImdbBackfillRetryDays"/> is configured to a non-positive
+    /// value. Retained as a named constant so the fallback and the default
+    /// cannot drift apart.
+    /// </summary>
+    public const int DefaultImdbBackfillRetryDays = 30;
+
+    /// <summary>
+    /// Number of days before a title that was already queried — but produced
+    /// no stored torrents — becomes eligible for another Prowlarr query. Every
+    /// title that reaches a query is stamped with <c>LastQueriedAt</c> even
+    /// when nothing matched; titles stamped within this window are excluded
+    /// from the walk, which lets successive runs advance past titles that
+    /// legitimately return zero results instead of re-walking the same head of
+    /// the list every run. Defaults to 30 days.
+    /// Only POSITIVE values make sense here: a value of zero or less makes a
+    /// just-stamped title immediately eligible again, so the walk re-walks the
+    /// same head of the list every run — the exact behaviour this window
+    /// exists to prevent. The job therefore falls back to
+    /// <see cref="DefaultImdbBackfillRetryDays"/> and logs a warning when this
+    /// is configured to a non-positive value.
+    /// </summary>
+    public int ImdbBackfillRetryDays { get; set; } = DefaultImdbBackfillRetryDays;
 }
 
 public class ProwlarrIndexer

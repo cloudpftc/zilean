@@ -450,6 +450,21 @@ public class ProwlarrSyncJob(
         var titleDelay = TimeSpan.FromSeconds(Math.Max(0, configuration.Prowlarr.ImdbBackfillTitleDelaySeconds));
         var indexerIdsParam = BuildImdbBackfillIndexerParam();
 
+        // A non-positive retry window makes the SQL predicate below
+        // (LastQueriedAt < retryCutoff) match a just-stamped title, so the
+        // walk re-walks the same head of the list every run — the exact bug
+        // LastQueriedAt exists to fix. Fall back to the documented default.
+        var retryDays = configuration.Prowlarr.ImdbBackfillRetryDays;
+        if (retryDays <= 0)
+        {
+            logger.LogWarning(
+                "[ImdbBackfill] ImdbBackfillRetryDays={Configured} is not positive; falling back to the default of {Default} days. " +
+                "A non-positive value would make just-stamped titles immediately eligible again and re-walk the same head of the list every run.",
+                configuration.Prowlarr.ImdbBackfillRetryDays, ProwlarrConfiguration.DefaultImdbBackfillRetryDays);
+            retryDays = ProwlarrConfiguration.DefaultImdbBackfillRetryDays;
+        }
+        var retryCutoff = DateTime.UtcNow.AddDays(-retryDays);
+
         if (string.IsNullOrEmpty(indexerIdsParam))
         {
             logger.LogWarning(
@@ -467,17 +482,30 @@ public class ProwlarrSyncJob(
         }
 
         logger.LogInformation(
-            "[ImdbBackfill] Starting IMDb-driven backfill: maxTitles={MaxTitles}, titleDelay={TitleDelay}s, indexerIds='{IndexerIds}'",
-            maxTitles, titleDelay.TotalSeconds,
+            "[ImdbBackfill] Starting IMDb-driven backfill: maxTitles={MaxTitles}, titleDelay={TitleDelay}s, retryDays={RetryDays}, indexerIds='{IndexerIds}'",
+            maxTitles, titleDelay.TotalSeconds, retryDays,
             string.IsNullOrEmpty(indexerIdsParam) ? "(all enabled)" : configuration.Prowlarr.ImdbBackfillIndexerIds);
 
         var client = GetProwlarrClient();
         var pipeline = GetProwlarrPipeline();
 
+        // The retry filter runs in SQL: the database returns only titles that
+        // have never been queried, or were last queried outside the retry
+        // window. The Take bounds the result set so each run materialises at
+        // most titleFetchLimit rows (WHERE ... ORDER BY "Year" LIMIT n)
+        // instead of the entire ~1M-row title set. The limit is a modest
+        // safety multiple of the per-run cap because titles skipped by the
+        // already-indexed similarity check below do NOT consume the cap, so a
+        // run needs more candidates than maxTitles to have a realistic chance
+        // of reaching it.
+        const int titleFetchMultiplier = 20;
+        var titleFetchLimit = Math.Max(maxTitles * titleFetchMultiplier, maxTitles);
         var titles = await dbContext.ImdbFiles
             .Where(i => i.Category == "movie" || i.Category == "tvSeries")
+            .Where(i => i.LastQueriedAt == null || i.LastQueriedAt < retryCutoff)
             .OrderBy(i => i.Year)
             .Select(i => new { i.Title, i.OriginalTitle, i.Category, i.ImdbId, i.Year })
+            .Take(titleFetchLimit)
             .ToListAsync(CancellationToken);
 
         logger.LogInformation("[ImdbBackfill] Loaded {Count} IMDb titles to check", titles.Count);
@@ -534,6 +562,13 @@ public class ProwlarrSyncJob(
             }
 
             titlesQueried++;
+
+            // Set only when a Prowlarr HTTP request for this title actually
+            // completes with a success status. A transport failure or a
+            // non-success status (429/5xx) leaves it false, so the title is
+            // NOT stamped and is retried on the next run instead of being
+            // silently excluded from the walk for the whole retry window.
+            var prowlarrQueryCompleted = false;
 
             // For TV shows, search per-season/episode for complete coverage.
             // Requires a TMDB token; without one we deliberately fall back to
@@ -593,6 +628,7 @@ public class ProwlarrSyncJob(
 
                         if (!response.IsSuccessStatusCode) break;
 
+                        prowlarrQueryCompleted = true;
                         totalQueried++;
                         var content = await response.Content.ReadAsStringAsync(CancellationToken);
                         var pageTorrents = ParseNativeResponse(content, "prowlarr");
@@ -631,6 +667,24 @@ public class ProwlarrSyncJob(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "[ImdbBackfill] Failed to query for '{Title}'", baseTitle);
+
+                // The upsert runs only at the end of the try block, so an
+                // exception here means nothing was persisted for this title.
+                // Clear the flag so the title is retried on the next run
+                // rather than stamped and skipped for the whole retry window.
+                prowlarrQueryCompleted = false;
+            }
+
+            // Stamp the title as queried ONLY when a Prowlarr query for it
+            // actually completed — regardless of whether anything matched.
+            // Persisted immediately (per title) so a crash or container
+            // restart cannot discard the run's progress, and so an empty but
+            // successful search still advances the walk past titles that
+            // legitimately return zero results. A failed query is left
+            // unstamped and therefore retried next run.
+            if (prowlarrQueryCompleted)
+            {
+                await MarkTitleQueriedAsync(imdbEntry.ImdbId, DateTime.UtcNow);
             }
 
             if (foundTorrents > 0) break;
@@ -651,6 +705,35 @@ public class ProwlarrSyncJob(
             totalProcessed, totalQueried, titlesQueried, totalSkipped, titlesExamined);
 
         return totalProcessed;
+    }
+
+    /// <summary>
+    /// Stamps <see cref="ImdbFile.LastQueriedAt"/> for an IMDb title whose
+    /// Prowlarr query has just COMPLETED successfully, and persists it
+    /// immediately so a crash or container restart cannot discard the run's
+    /// progress. The stamp is recorded regardless of whether any torrent
+    /// matched — that is what lets the next run advance past titles that
+    /// legitimately return zero results. Callers must only invoke this after
+    /// a query actually succeeded: a transport or HTTP failure must leave the
+    /// title unstamped so it is retried on the next run. A persistence failure
+    /// is logged and swallowed so a transient database error cannot abort the
+    /// whole backfill run.
+    /// </summary>
+    private async Task MarkTitleQueriedAsync(string imdbId, DateTime queriedAt)
+    {
+        try
+        {
+            await dbContext.ImdbFiles
+                .Where(i => i.ImdbId == imdbId)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(i => i.LastQueriedAt, queriedAt),
+                    CancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "[ImdbBackfill] Failed to persist LastQueriedAt for IMDb title '{ImdbId}'; continuing", imdbId);
+        }
     }
 
     /// <summary>
