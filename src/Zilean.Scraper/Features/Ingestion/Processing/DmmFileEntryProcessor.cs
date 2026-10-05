@@ -81,7 +81,22 @@ public partial class DmmFileEntryProcessor(
 
         try
         {
-            var decodedJson = Decompressor.FromEncodedUriComponent(match.Groups[1].Value);
+            var payload = match.Groups[1].Value;
+
+            // Newer DMM hashlist files are stubs: instead of an inline LZString
+            // payload the iframe fragment carries "id=<uuid>" and the data is
+            // loaded client-side by the debridmediamanager.com web app. There is
+            // nothing to decompress — attempting it threw
+            // "KeyNotFoundException: The given key '=' was not present in the
+            // dictionary" and aborted the page. Record it and move on.
+            if (payload.StartsWith("id=", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Skipping stub hashlist (no inline payload): {FileName}", filenameOnly);
+                await AddParsedPage(filenameOnly, 0, cancellationToken);
+                return [];
+            }
+
+            var decodedJson = Decompressor.FromEncodedUriComponent(payload);
 
             var utf8Bytes = Encoding.UTF8.GetBytes(decodedJson);
             var span = new ReadOnlySpan<byte>(utf8Bytes);

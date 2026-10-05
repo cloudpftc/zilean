@@ -100,10 +100,19 @@ public class ProwlarrSyncJob(
 
     private string BuildNativeSearchUrl(ProwlarrIndexer indexer, string query, int offset)
     {
+        // Prowlarr binds `categories` as a REPEATED query parameter. Passing a
+        // comma-joined value (e.g. "2000,5000") is rejected with HTTP 400:
+        //   {"errors":{"categories":["The value '2000,5000' is not valid."]}}
+        // which made every Prowlarr sync fail on every indexer.
+        var categories = string.Concat(
+            indexer.Categories
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(c => $"&categories={Uri.EscapeDataString(c)}"));
+
         return $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
             + $"?query={Uri.EscapeDataString(query)}"
             + $"&indexerIds={indexer.IndexerId}"
-            + $"&categories={indexer.Categories}"
+            + categories
             + $"&type=search"
             + $"&limit={PageSize}"
             + $"&offset={offset}";
