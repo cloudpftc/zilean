@@ -540,14 +540,24 @@ public class ProwlarrSyncJob(
             {
             if (titlesQueried >= maxTitles) break;
 
-            // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)
+            // Check if this title already has torrents in the DB (DMM hashlist or
+            // Prowlarr). The check is IDENTITY-based: skip ONLY when a torrent
+            // row already carries this exact IMDb id. The previous
+            // similarity("CleanedParsedTitle", title) > 0.5 test was name-based:
+            // against ~1.7M torrent names a short generic title ("Angel", "Chia
+            // Chiller") collided with an unrelated torrent almost every time, so
+            // the walk silently skipped its whole window and Prowlarr was queried
+            // never. Identity uses idx_torrents_imdbid and is O(1); a title with
+            // no matching IMDb id is QUERIED (a missed skip costs one redundant
+            // search, a wrong skip silently drops the title forever). The
+            // name-similarity scan — a full sequential scan of "Torrents", not
+            // indexable — is deliberately gone from the hot path.
             var existsInDb = await dbContext.Torrents
                 .FromSqlRaw("""
                     SELECT * FROM "Torrents"
-                    WHERE "CleanedParsedTitle" IS NOT NULL
-                    AND similarity("CleanedParsedTitle", {0}) > 0.5
+                    WHERE "ImdbId" = {0}
                     LIMIT 1
-                    """, baseTitle)
+                    """, imdbEntry.ImdbId)
                 .AnyAsync(CancellationToken);
 
             if (existsInDb)
