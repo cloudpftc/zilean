@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Polly;
@@ -17,9 +19,20 @@ public class ProwlarrSyncJob(
 {
     public CancellationToken CancellationToken { get; set; }
     private const int PageSize = 100;
+    private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
 
     private ResiliencePipeline<HttpResponseMessage>? _prowlarrPipeline;
     private HttpClient? _prowlarrClient;
+
+    /// <summary>
+    /// Per-run cache of <c>imdbId (tt...)</c> to TMDB tv id. This job is
+    /// registered transient, so a fresh instance (and a fresh cache) is
+    /// created for each scheduled run; within a run the TMDB id for a title
+    /// is resolved at most once via <c>/3/find</c> instead of on every
+    /// season/episode lookup. An empty value means "resolved, but TMDB has
+    /// no tv match" and is cached too, so a miss is not retried per episode.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _tmdbIdCache = new();
 
     private ResiliencePipeline<HttpResponseMessage> GetProwlarrPipeline()
     {
@@ -420,6 +433,8 @@ public class ProwlarrSyncJob(
         var totalProcessed = 0;
         var totalQueried = 0;
         var totalSkipped = 0;
+        var titlesQueried = 0;
+        var titlesExamined = 0;
 
         var indexerPriority = configuration.Prowlarr.Indexers
             .Where(i => i.Enabled && !string.IsNullOrWhiteSpace(i.SourceName))
@@ -431,8 +446,30 @@ public class ProwlarrSyncJob(
             return 0;
         }
 
-        logger.LogInformation("[ImdbBackfill] Starting IMDb-driven backfill with {Count} indexers",
-            indexerPriority.Count);
+        var maxTitles = configuration.Prowlarr.ImdbBackfillMaxTitlesPerRun;
+        var titleDelay = TimeSpan.FromSeconds(Math.Max(0, configuration.Prowlarr.ImdbBackfillTitleDelaySeconds));
+        var indexerIdsParam = BuildImdbBackfillIndexerParam();
+
+        if (string.IsNullOrEmpty(indexerIdsParam))
+        {
+            logger.LogWarning(
+                "[ImdbBackfill] ImdbBackfillIndexerIds is empty — this run will query ALL {Count} enabled Prowlarr indexers. " +
+                "Set it to a bounded list of indexer ids to avoid saturating Prowlarr.",
+                indexerPriority.Count);
+        }
+
+        var tmdbEnabled = !string.IsNullOrWhiteSpace(configuration.Tmdb.AccessToken);
+        if (!tmdbEnabled)
+        {
+            logger.LogWarning(
+                "[ImdbBackfill] Zilean:Tmdb:AccessToken is not set — skipping TV season/episode expansion; " +
+                "TV titles will be searched by bare title only. Set Zilean__Tmdb__AccessToken to enable per-episode searches.");
+        }
+
+        logger.LogInformation(
+            "[ImdbBackfill] Starting IMDb-driven backfill: maxTitles={MaxTitles}, titleDelay={TitleDelay}s, indexerIds='{IndexerIds}'",
+            maxTitles, titleDelay.TotalSeconds,
+            string.IsNullOrEmpty(indexerIdsParam) ? "(all enabled)" : configuration.Prowlarr.ImdbBackfillIndexerIds);
 
         var client = GetProwlarrClient();
         var pipeline = GetProwlarrPipeline();
@@ -448,6 +485,14 @@ public class ProwlarrSyncJob(
         foreach (var imdbEntry in titles)
         {
             if (CancellationToken.IsCancellationRequested) break;
+
+            if (titlesQueried >= maxTitles)
+            {
+                logger.LogInformation("[ImdbBackfill] Reached max titles per run ({Max}); stopping this run", maxTitles);
+                break;
+            }
+
+            titlesExamined++;
 
             // Prefer original title (e.g. "Shingeki no Kyojin") over English title (e.g. "Attack on Titan")
             var titlesToTry = new List<string>();
@@ -465,6 +510,8 @@ public class ProwlarrSyncJob(
 
             foreach (var baseTitle in titlesToTry)
             {
+            if (titlesQueried >= maxTitles) break;
+
             // Check if this title already has torrents in the DB (DMM hashlist or Prowlarr)
             var existsInDb = await dbContext.Torrents
                 .FromSqlRaw("""
@@ -486,9 +533,14 @@ public class ProwlarrSyncJob(
                 continue;
             }
 
-            // For TV shows, search per-season/episode for complete coverage
+            titlesQueried++;
+
+            // For TV shows, search per-season/episode for complete coverage.
+            // Requires a TMDB token; without one we deliberately fall back to
+            // the bare-title search already in searchQueries (see the warning
+            // logged at the start of the run) instead of calling TMDB unauthenticated.
             var searchQueries = new List<string> { baseTitle };
-            if (imdbEntry.Category == "tvSeries")
+            if (imdbEntry.Category == "tvSeries" && tmdbEnabled)
             {
                 var seasonCount = await GetSeasonCountAsync(imdbEntry.ImdbId, client, pipeline);
                 for (var s = 1; s <= seasonCount && searchQueries.Count < 200; s++)
@@ -530,6 +582,7 @@ public class ProwlarrSyncJob(
                     {
                         var url = $"{configuration.Prowlarr.BaseUrl.TrimEnd('/')}/api/v1/search"
                             + $"?query={Uri.EscapeDataString(searchQuery)}"
+                            + indexerIdsParam
                             + $"&type=search"
                             + $"&limit={PageSize}"
                             + $"&offset={offset}";
@@ -583,8 +636,8 @@ public class ProwlarrSyncJob(
             if (foundTorrents > 0) break;
         }
 
-            // 5s between titles to avoid rate limiting
-            await Task.Delay(5000, CancellationToken);
+            // Configurable delay between titles to avoid rate limiting
+            await Task.Delay(titleDelay, CancellationToken);
 
             if (totalQueried % 100 == 0)
             {
@@ -593,23 +646,113 @@ public class ProwlarrSyncJob(
             }
         }
 
-        logger.LogInformation("[ImdbBackfill] Complete: {Total} torrents from {Queried} queries ({Skipped} existing titles skipped)",
-            totalProcessed, totalQueried, totalSkipped);
+        logger.LogInformation(
+            "[ImdbBackfill] Complete: {Total} torrents upserted from {Queried} Prowlarr queries; titles queried={TitlesQueried}, existing titles skipped={Skipped}, titles examined={Examined}",
+            totalProcessed, totalQueried, titlesQueried, totalSkipped, titlesExamined);
 
         return totalProcessed;
     }
 
-    private async Task<int> GetSeasonCountAsync(string imdbId, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
+    /// <summary>
+    /// Builds the repeated <c>indexerIds</c> query-parameter fragment for the
+    /// IMDb backfill from <see cref="ProwlarrConfiguration.ImdbBackfillIndexerIds"/>.
+    /// Prowlarr binds indexerIds as repeated parameters (one per id). Returns
+    /// an empty string when no filter is configured, which means the backfill
+    /// will query every enabled indexer — a warning is logged for that case.
+    /// </summary>
+    private string BuildImdbBackfillIndexerParam()
     {
+        var raw = configuration.Prowlarr.ImdbBackfillIndexerIds;
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+
+        return string.Concat(
+            raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(id => int.TryParse(id, out _))
+                .Select(id => $"&indexerIds={Uri.EscapeDataString(id)}"));
+    }
+
+    /// <summary>
+    /// Resolves an IMDb id (e.g. <c>tt0903747</c>) to a TMDB tv id via
+    /// <c>/3/find/{imdbId}?external_source=imdb_id</c>. Results — including
+    /// "no tv match" — are memoised in <see cref="_tmdbIdCache"/> for the
+    /// lifetime of this job instance so the find call runs at most once per
+    /// title per run. Returns <c>null</c> on any failure.
+    /// </summary>
+    private async Task<string?> ResolveTmdbIdAsync(string imdbId, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
+    {
+        if (_tmdbIdCache.TryGetValue(imdbId, out var cached))
+        {
+            return cached.Length == 0 ? null : cached;
+        }
+
+        var resolved = string.Empty;
         try
         {
-            var url = $"https://api.imdbapi.dev/titles/{imdbId}/seasons";
-            var response = await pipeline.ExecuteAsync(async ct => await client.GetAsync(url, ct), CancellationToken);
+            var url = $"{TmdbBaseUrl}/find/{Uri.EscapeDataString(imdbId)}?external_source=imdb_id";
+            var response = await pipeline.ExecuteAsync(
+                async ct => await SendTmdbAsync(url, client, ct),
+                CancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(CancellationToken);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("tv_results", out var tvResults) &&
+                    tvResults.ValueKind == JsonValueKind.Array &&
+                    tvResults.GetArrayLength() > 0 &&
+                    tvResults[0].TryGetProperty("id", out var idProp) &&
+                    idProp.TryGetInt64(out var tmdbId) &&
+                    tmdbId > 0)
+                {
+                    resolved = tmdbId.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[ImdbBackfill] Failed to resolve TMDB id for {ImdbId}", imdbId);
+        }
+
+        _tmdbIdCache[imdbId] = resolved;
+        return resolved.Length == 0 ? null : resolved;
+    }
+
+    /// <summary>
+    /// Sends a TMDB GET through the shared Prowlarr resilience pipeline and
+    /// HttpClient. A fresh <see cref="HttpRequestMessage"/> is built per
+    /// attempt (the pipeline may retry) with the bearer token and JSON
+    /// accept header set per request, so the secret is never attached to the
+    /// shared client's default headers (and therefore never sent to Prowlarr).
+    /// </summary>
+    private async Task<HttpResponseMessage> SendTmdbAsync(string url, HttpClient client, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", configuration.Tmdb.AccessToken);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return await client.SendAsync(request, ct);
+    }
+
+    private async Task<int> GetSeasonCountAsync(string imdbId, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
+    {
+        if (string.IsNullOrWhiteSpace(configuration.Tmdb.AccessToken)) return 1;
+
+        try
+        {
+            var tmdbId = await ResolveTmdbIdAsync(imdbId, client, pipeline);
+            if (tmdbId is null) return 1;
+
+            var url = $"{TmdbBaseUrl}/tv/{tmdbId}";
+            var response = await pipeline.ExecuteAsync(
+                async ct => await SendTmdbAsync(url, client, ct),
+                CancellationToken);
             if (!response.IsSuccessStatusCode) return 1;
             var json = await response.Content.ReadAsStringAsync(CancellationToken);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("seasons", out var seasons))
-                return Math.Max(1, seasons.GetArrayLength());
+            if (doc.RootElement.TryGetProperty("number_of_seasons", out var seasons) &&
+                seasons.TryGetInt32(out var count))
+            {
+                return Math.Max(1, count);
+            }
         }
         catch (Exception ex)
         {
@@ -620,15 +763,25 @@ public class ProwlarrSyncJob(
 
     private async Task<int> GetEpisodeCountAsync(string imdbId, int season, HttpClient client, ResiliencePipeline<HttpResponseMessage> pipeline)
     {
+        if (string.IsNullOrWhiteSpace(configuration.Tmdb.AccessToken)) return 1;
+
         try
         {
-            var url = $"https://api.imdbapi.dev/titles/{imdbId}/episodes?season={season}";
-            var response = await pipeline.ExecuteAsync(async ct => await client.GetAsync(url, ct), CancellationToken);
+            var tmdbId = await ResolveTmdbIdAsync(imdbId, client, pipeline);
+            if (tmdbId is null) return 1;
+
+            var url = $"{TmdbBaseUrl}/tv/{tmdbId}/season/{season}";
+            var response = await pipeline.ExecuteAsync(
+                async ct => await SendTmdbAsync(url, client, ct),
+                CancellationToken);
             if (!response.IsSuccessStatusCode) return 1;
             var json = await response.Content.ReadAsStringAsync(CancellationToken);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("episodes", out var episodes))
+            if (doc.RootElement.TryGetProperty("episodes", out var episodes) &&
+                episodes.ValueKind == JsonValueKind.Array)
+            {
                 return Math.Max(1, episodes.GetArrayLength());
+            }
         }
         catch (Exception ex)
         {

@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<GenericSyncJob>();
         services.AddTransient<BackgroundRefreshJob>();
         services.AddTransient<ProwlarrSyncJob>();
+        services.AddTransient<ImdbBackfillJob>();
         services.AddSingleton<SyncOnDemandState>();
         services.AddHttpClient("Prowlarr");
 
@@ -58,6 +59,13 @@ public static class ServiceCollectionExtensions
                 {
                     scheduler.Schedule<ProwlarrSyncJob>()
                         .Cron(configuration.Prowlarr.Cron)
+                        .PreventOverlapping("SyncJobs");
+                }
+
+                if (configuration.Prowlarr.ImdbBackfillEnabled)
+                {
+                    scheduler.Schedule<ImdbBackfillJob>()
+                        .Cron(configuration.Prowlarr.ImdbBackfillCron)
                         .PreventOverlapping("SyncJobs");
                 }
 

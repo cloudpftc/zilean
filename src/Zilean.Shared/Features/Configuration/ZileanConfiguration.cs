@@ -23,6 +23,7 @@ public class ZileanConfiguration
     public AuditSettings Audit { get; set; } = new();
     public DiagnosticsSettings Diagnostics { get; set; } = new();
     public ProwlarrConfiguration Prowlarr { get; set; } = new();
+    public TmdbConfiguration Tmdb { get; set; } = new();
 
     public static void EnsureExists()
     {
