@@ -9,6 +9,61 @@ public partial class DmmFileEntryProcessor(
 {
     [GeneratedRegex("""<iframe src="https:\/\/debridmediamanager.com\/hashlist#(.*)"></iframe>""")]
     private static partial Regex HashCollectionMatcher { get; }
+
+    [GeneratedRegex("""^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$""", RegexOptions.IgnoreCase)]
+    private static partial Regex HashlistIdMatcher { get; }
+
+    /// <summary>Pulls the lz-string payload out of an old-form page stored as a list file.</summary>
+    [GeneratedRegex("""<iframe src="[^"]*#([^"]+)""")]
+    private static partial Regex StoredListIframeMatcher { get; }
+
+    private static readonly System.Net.Http.HttpClient _hashlistDataClient = new()
+    {
+        Timeout = TimeSpan.FromMinutes(2),
+    };
+
+    /// <summary>
+    /// Fetches the payload of a stub hashlist from the DMM list host. The stored
+    /// file is either the lz-string text itself, or (for lists published before
+    /// the move) an old page whose iframe fragment carries it.
+    /// </summary>
+    private async Task<string> FetchStoredHashlistAsync(string hashlistId, string filenameOnly, CancellationToken cancellationToken)
+    {
+        var url = $"{_configuration.Dmm.HashlistDataHost.TrimEnd('/')}/lists/{hashlistId}.txt";
+
+        try
+        {
+            using var response = await _hashlistDataClient.GetAsync(url, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogInformation("Hashlist {HashlistId} is not published yet ({FileName})", hashlistId, filenameOnly);
+                return string.Empty;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            var text = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+            if (text.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            if (text.StartsWith('<'))
+            {
+                var stored = StoredListIframeMatcher.Match(text);
+                return stored.Success ? stored.Groups[1].Value : string.Empty;
+            }
+
+            return text;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch stored hashlist {HashlistId} for {FileName}", hashlistId, filenameOnly);
+            return string.Empty;
+        }
+    }
+
     private List<string> _filesToProcess = [];
     private readonly ObjectPool<List<ExtractedDmmEntry>> _torrentsListPool = new DefaultObjectPoolProvider().Create<List<ExtractedDmmEntry>>();
     public ConcurrentDictionary<string, int> ExistingPages { get; private set; } = [];
@@ -83,17 +138,30 @@ public partial class DmmFileEntryProcessor(
         {
             var payload = match.Groups[1].Value;
 
-            // Newer DMM hashlist files are stubs: instead of an inline LZString
-            // payload the iframe fragment carries "id=<uuid>" and the data is
-            // loaded client-side by the debridmediamanager.com web app. There is
-            // nothing to decompress — attempting it threw
+            // Newer DMM hashlist pages are stubs: the iframe fragment carries
+            // "id=<uuid>" instead of an inline lz-string payload, because a list
+            // over ~1-2 MB overflows the browser's URL limit. The payload is
+            // published beside the page at {HashlistDataHost}/lists/{uuid}.txt
+            // (see debridmediamanager/debrid-media-manager hashlistSource.ts).
+            // Attempting to decompress "id=..." threw
             // "KeyNotFoundException: The given key '=' was not present in the
-            // dictionary" and aborted the page. Record it and move on.
+            // dictionary" and aborted the page.
             if (payload.StartsWith("id=", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogDebug("Skipping stub hashlist (no inline payload): {FileName}", filenameOnly);
-                await AddParsedPage(filenameOnly, 0, cancellationToken);
-                return [];
+                var hashlistId = payload[3..].Trim();
+                if (!HashlistIdMatcher.IsMatch(hashlistId))
+                {
+                    _logger.LogWarning("Unrecognised hashlist stub fragment in {FileName}: {Payload}", filenameOnly, payload);
+                    await AddParsedPage(filenameOnly, 0, cancellationToken);
+                    return [];
+                }
+
+                payload = await FetchStoredHashlistAsync(hashlistId, filenameOnly, cancellationToken);
+                if (string.IsNullOrEmpty(payload))
+                {
+                    await AddParsedPage(filenameOnly, 0, cancellationToken);
+                    return [];
+                }
             }
 
             var decodedJson = Decompressor.FromEncodedUriComponent(payload);

@@ -25,6 +25,14 @@ public class DmmConfiguration
     /// </summary>
     public string RepositoryDirectory { get; set; } = "/app/data/DMMHashlists";
 
+    /// <summary>
+    /// Host serving the list payloads referenced by stub hashlist pages.
+    /// A stub page's iframe fragment is "id=&lt;uuid&gt;" rather than an inline
+    /// lz-string payload; the payload is published at {host}/lists/{uuid}.txt.
+    /// See debridmediamanager/debrid-media-manager src/utils/hashlistSource.ts.
+    /// </summary>
+    public string HashlistDataHost { get; set; } = "https://hashlists.debridmediamanager.com";
+
     public int MaxFilteredResults { get; set; } = 200;
     public double MinimumScoreMatch { get; set; } = 0.85;
 
